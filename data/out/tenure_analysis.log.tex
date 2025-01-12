@@ -1,0 +1,69 @@
+. 
+. // load and inspect data
+. use "tenure_anonymized.dta", clear 
+{\smallskip}
+. list in 1/5, ab(20) 
+{\smallskip}
+     {\TLC}\HLI{44}{\TRC}
+     {\VBAR} time_col   id_col   company_name     y_col {\VBAR}
+     {\LFTT}\HLI{44}{\RGTT}
+  1. {\VBAR}        2       17         oracle   1682.25 {\VBAR}
+  2. {\VBAR}        3        1       deloitte   375.783 {\VBAR}
+  3. {\VBAR}        2       72             3m   5276.48 {\VBAR}
+  4. {\VBAR}        3        2      microsoft    957.55 {\VBAR}
+  5. {\VBAR}        2        2      microsoft   2745.96 {\VBAR}
+     {\BLC}\HLI{44}{\BRC}
+{\smallskip}
+. 
+. 
+. // run disco commands
+. disco y_col id_col time_col, idtarget(2) t0(3) agg("quantileDiff") ///
+>         seed(12143) g(10) m(100) ci boots(300) 
+{\smallskip}
+. disco_weight id_col company_name, n(5)
+{\smallskip}
+Top 5 weights:
+\HLI{50}
+{\smallskip}
+  {\TLC}\HLI{19}{\TOPT}\HLI{8}{\TRC}
+  {\VBAR}              name {\VBAR} weight {\VBAR}
+  {\LFTT}\HLI{19}{\PLUS}\HLI{8}{\RGTT}
+  {\VBAR}            amazon {\VBAR}  .2203 {\VBAR}
+  {\VBAR}          autodesk {\VBAR}  .1271 {\VBAR}
+  {\VBAR}             cisco {\VBAR}  .1066 {\VBAR}
+  {\VBAR} dell technologies {\VBAR}  .0991 {\VBAR}
+  {\VBAR} slalom consulting {\VBAR}  .0962 {\VBAR}
+  {\BLC}\HLI{19}{\BOTT}\HLI{8}{\BRC}
+{\smallskip}
+. disco_estat summary
+{\smallskip}
+Summary of quantile effects
+\HLI{80}
+Time period   Range                    Effect     Std. Err.    [.95\% Conf. Interval]
+\HLI{80}
+        3    0.00-0.25       -6.659       26.779      -59.147     45.828
+        3    0.25-0.50      -21.443       26.779      -73.931     31.045
+        3    0.50-0.75      -50.509       26.779     -102.997      1.978
+        3    0.75-1.00      -54.751       26.779     -107.239     -2.263*
+\HLI{80}
+* denotes significance at .95\% confidence level
+{\smallskip}
+. disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) scheme("stsj")
+{\smallskip}
+. graph export "\${\lbr}figs{\rbr}/tenure_quantileDiff.pdf", replace
+file{\bftt{ /Users/davidvandijcke/University of Michigan Dropbox/David Van}}
+    {\bftt{Dijcke/Flo_GSRA/sj_replication/results/figs/tenure_quantileDiff.pdf}} saved as PDF format
+{\smallskip}
+. 
+. // plot quantile functions separately
+. disco_plot, title(" ") ytitle("Tenure (Days)") agg("quantile") /// 
+>         yrange(0 3000) scheme("stsj") // vline(0)
+{\smallskip}
+. graph export "\${\lbr}figs{\rbr}/tenure_quantile.pdf", replace
+file{\bftt{ /Users/davidvandijcke/University of Michigan Dropbox/David Van}}
+    {\bftt{Dijcke/Flo_GSRA/sj_replication/results/figs/tenure_quantile.pdf}} saved as PDF format
+{\smallskip}
+. 
+. 
+. capture sjlog close
+{\smallskip}

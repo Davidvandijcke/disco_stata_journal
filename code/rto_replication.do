@@ -3,6 +3,9 @@ clear
 net install disco, from("https://raw.githubusercontent.com/Davidvandijcke/DiSCos_stata/dev/src/") replace
 net install gzimport, from(https://raw.githubusercontent.com/mdroste/stata-gzimport/master/) replace
 
+net install disco, from("/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/stata_repo/src") replace
+
+
 
 //**************************
 // Set Paths
@@ -43,6 +46,21 @@ if `process_data' {
 	replace y_col = y_col_anonymized
 
 	keep id_col company_name y_col time_col
+	
+	
+	* First, create a percentile rank within each id-time group
+	bysort id_col time_col: egen pctile_rank = pctile(y_col), p(90)
+
+	* Keep only observations that are below or equal to the 90th percentile
+	keep if y_col <= pctile_rank
+
+	* Clean up
+	drop pctile_rank
+	
+	set seed 12345    // Optional: set seed for reproducibility
+	gen random = runiform()
+	sort random
+	drop random
 
 	// Save the anonymized dataset as a Stata file
 	save "${dataOut}/tenure_anonymized.dta", replace
@@ -52,21 +70,28 @@ if `process_data' {
 	clear all
 	gzimport delimited using "${dataIn}/titles_stata.csv.gz", clear
 
-	// Add random perturbation to y_col
-	gen noise = round(runiform() * 2 - 1) // Random noise: -1, 0, or 1
+	// Generate noise with position-specific probabilities
+	gen noise = 0
+	// Reduced noise (5% chance each way) for lowest and highest positions
+	replace noise = -1 if runiform() < 0.05 & (y_col == 1 | y_col == 10)
+	replace noise = 1 if runiform() < 0.05 & noise == 0 & (y_col == 1 | y_col == 10)
+
+	// Moderate noise (15% chance each way) for middle positions
+	replace noise = -1 if runiform() < 0.1 & y_col > 1 & y_col < 10 & noise == 0
+	replace noise = 1 if runiform() < 0.1 & y_col > 1 & y_col < 10 & noise == 0
+
+	// Apply noise and enforce bounds
 	gen y_col_anonymized = y_col + noise
+	replace y_col_anonymized = 1 if y_col_anonymized < 1
+	replace y_col_anonymized = 10 if y_col_anonymized > 10
 
-	// Ensure y_col_anonymized stays within the valid range [1, 10]
-	replace y_col_anonymized = cond(y_col_anonymized < 1, 1, y_col_anonymized) // Cap minimum at 1
-	replace y_col_anonymized = cond(y_col_anonymized > 10, 10, y_col_anonymized) // Cap maximum at 10
 
-	// Summary statistics to check the effect
+	// Check the effect
 	tabulate y_col y_col_anonymized
+
+	// Update and keep relevant columns
 	replace y_col = y_col_anonymized
-
-
 	keep id_col company_name y_col time_col
-
 
 
 	// Save the anonymized dataset as a Stata file
@@ -85,38 +110,73 @@ if `process_data' {
 //                qmethod=NULL) # seed 5
 
 
-disco y_col id_col time_col, idtarget(2) t0(3) agg("quantileDiff") qmax(0.9) seed(1242)    // ci boots(500)
+cd "$dataOut"
+
+capture sjlog close
+sjlog using "tenure_analysis", replace 
+
+// load and inspect data
+use "tenure_anonymized.dta", clear 
+list in 1/5, ab(20) 
+
+
+// run disco commands
+disco y_col id_col time_col, idtarget(2) t0(3) agg("quantileDiff") ///
+	seed(12143) g(10) m(100) ci boots(300) 
+disco_weight id_col company_name, n(5)
+disco_estat summary
+disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) scheme("stsj")
+graph export "${figs}/tenure_quantileDiff.pdf", replace
+
+// plot quantile functions separately
+disco_plot, title(" ") ytitle("Tenure (Days)") agg("quantile") /// 
+	yrange(0 3000) scheme("stsj") // vline(0)
+graph export "${figs}/tenure_quantile.pdf", replace
+
+
+capture sjlog close
 
 
 
 
-* Create a temporary file to store the matches
-tempname memhold
 
-* Store the id-company name pairs we need
-postfile `memhold' str32 company_name double weight using weights_matched.dta, replace
+//**************************
+// Reproduce title results
+//**************************
+
+// disco <- DiSCo(grouped, id_col.target = id_col.target, t0 = t0, q_max=0.9, G = G, M=M, num.cores=20,
+//                cl=0.95,uniform=TRUE, permutation = TRUE, CI = TRUE, boots = 1000, simplex=TRUE, seed=30, qtype=7,
+//                qmethod=NULL) # seed 5
+
+cd "$dataOut"
+
+sjlog using "titles_analysis.log", replace 
+
+use "titles_anonymized.dta", clear 
+list in 1/5, ab(20) 
+
+// main disco command
+disco y_col id_col time_col, idtarget(2) t0(3) agg("cdfDiff") seed(12143) /// 
+	mixture g(10) m(10) ci boots(300)
+	 
+// plot top 5 weights
+disco_weight id_col company_name, n(5)
+
+// plot summary table
+disco_estat summary
+
+// plot CDF effects
+disco_plot, title(" ") ytitle("Change in CDF") hline(0) categorical /// 
+	scheme("stsj") color("bluishgray") 
+graph export "${figs}/title_cdfDiff.pdf", replace
+
+// plot synthetic vs. treated CDF
+disco_plot, title(" ") ytitle("Tenure (Days)") agg("cdf") scheme("stsj")
+
+graph export "${figs}/title_cdf.pdf", replace
+
+capture sjlog close, replace
 
 
-* Loop through the cids and weights to match with company names
-forvalues i = 1/`=colsof(e(cids))' {
-    local id = e(cids)[1,`i']
-    local w = e(weights)[1,`i']
-    * Get company name for this id
-	qui levelsof company_name if id_col == `id', local(company) clean
-    post `memhold' ("`company'") (`w')
-}
-postclose `memhold'
-
-preserve
-* Load the matched data
-use weights_matched.dta, clear
 
 
-gsort -weight
-
-keep in 1/5
-replace weight = round(weight, 0.0001)
-
-texsave * using top_weights.tex, replace 
-
-restore 

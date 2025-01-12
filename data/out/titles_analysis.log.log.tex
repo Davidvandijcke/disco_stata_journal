@@ -1,0 +1,73 @@
+. 
+. use "titles_anonymized.dta", clear 
+{\smallskip}
+. list in 1/5, ab(20) 
+{\smallskip}
+     {\TLC}\HLI{42}{\TRC}
+     {\VBAR} time_col   id_col   company_name   y_col {\VBAR}
+     {\LFTT}\HLI{42}{\RGTT}
+  1. {\VBAR}        3       17         oracle       8 {\VBAR}
+  2. {\VBAR}        2        1       deloitte       5 {\VBAR}
+  3. {\VBAR}        3        1       deloitte       6 {\VBAR}
+  4. {\VBAR}        1        1       deloitte       5 {\VBAR}
+  5. {\VBAR}        2      245         splunk       4 {\VBAR}
+     {\BLC}\HLI{42}{\BRC}
+{\smallskip}
+. 
+. // main disco command
+. disco y_col id_col time_col, idtarget(2) t0(3) agg("cdfDiff") seed(12143) /// 
+>         mixture g(10) m(10) ci boots(500)
+{\smallskip}
+.          
+. // plot top 5 weights
+. disco_weight id_col company_name, n(5)
+{\smallskip}
+Top 5 weights:
+\HLI{50}
+{\smallskip}
+  {\TLC}\HLI{20}{\TOPT}\HLI{8}{\TRC}
+  {\VBAR}               name {\VBAR} weight {\VBAR}
+  {\LFTT}\HLI{20}{\PLUS}\HLI{8}{\RGTT}
+  {\VBAR}  slalom consulting {\VBAR}  .1676 {\VBAR}
+  {\VBAR}          protiviti {\VBAR}  .1617 {\VBAR}
+  {\VBAR}                amd {\VBAR}   .135 {\VBAR}
+  {\VBAR}  dell technologies {\VBAR}  .1063 {\VBAR}
+  {\VBAR} motorola solutions {\VBAR}  .0839 {\VBAR}
+  {\BLC}\HLI{20}{\BOTT}\HLI{8}{\BRC}
+{\smallskip}
+. 
+. // plot summary table
+. disco_estat summary
+{\smallskip}
+Summary of CDF effects
+\HLI{80}
+Time period   Range                    Effect     Std. Err.    [.95\% Conf. Interval]
+\HLI{80}
+        3         1.00-     3.25        0.007        0.006       -0.004      0.019
+        3         3.25-     5.50        0.009        0.006       -0.003      0.020
+        3         5.50-     7.75        0.005        0.006       -0.006      0.016
+        3         7.75-    10.00       -0.001        0.006       -0.012      0.011
+\HLI{80}
+* denotes significance at .95\% confidence level
+{\smallskip}
+. 
+. // plot CDF effects
+. disco_plot, title(" ") ytitle("Change in CDF") hline(0) categorical /// 
+>         scheme("stsj") color("bluishgray") 
+{\smallskip}
+. graph save "\${\lbr}figs{\rbr}/title_cdfDiff.pdf", replace
+file {\bftt{/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication/results/fig}}
+{\bftt{> s/title_cdfDiff.pdf}} saved as .gph format
+{\smallskip}
+. 
+. // plot synthetic vs. treated CDF
+. disco_plot, title(" ") ytitle("Tenure (Days)") agg("cdf") scheme("stsj")
+{\smallskip}
+. 
+. graph save "\${\lbr}figs{\rbr}/title_cdf.pdf", replace
+file {\bftt{/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication/results/fig}}
+{\bftt{> s/title_cdf.pdf}} saved as .gph format
+{\smallskip}
+. 
+. capture sjlog close, replace
+{\smallskip}

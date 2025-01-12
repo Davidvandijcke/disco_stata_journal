@@ -1,0 +1,44 @@
+--------------------------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication/dat
+> a/out/titles_analysis.log
+  log type:  text
+ opened on:  11 Jan 2025, 11:30:15
+
+. 
+. use "titles_anonymized.dta", clear 
+
+. list in 1/5, ab(20) 
+
+     +------------------------------------------+
+     | time_col   id_col   company_name   y_col |
+     |------------------------------------------|
+  1. |        3       17         oracle       8 |
+  2. |        2        1       deloitte       5 |
+  3. |        3        1       deloitte       6 |
+  4. |        1        1       deloitte       5 |
+  5. |        2      245         splunk       4 |
+     +------------------------------------------+
+
+. 
+. // run disco commands
+. disco y_col id_col time_col, idtarget(2) t0(3) agg("cdfDiff")  seed(12143) ci boots(300) mixture g(10) m(10)
+>   
+--Break--
+r(1);
+
+end of do-file
+
+--Break--
+r(1);
+
+. help sjlog
+
+. do "/var/folders/zs/20zk30ss1dq_90y7_2t9wgvc0000gn/T//SD87111.000000"
+
+. 
+. cd "$dataOut"
+/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication/data/out
+
+. 
+. capture sjlog close
