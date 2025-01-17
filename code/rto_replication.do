@@ -57,7 +57,6 @@ if `process_data' {
 	* Clean up
 	drop pctile_rank
 	
-	set seed 12345    // Optional: set seed for reproducibility
 	gen random = runiform()
 	sort random
 	drop random
