@@ -1,7 +1,15 @@
-net install disco, from("https://raw.githubusercontent.com/Davidvandijcke/DiSCos_stata/dev/src/") replace
+version 18.0
 
-global maindir = "/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication"
-global figs = "${maindir}/results/figs"
+* ---- EDIT this to your replication-package root directory ----
+global root "/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication_submission_16jan2024"
+global figs "${root}/results/figs"
+
+* Install the bundled disco package (ships in src/ of this replication package)
+global pkg "${root}/src"
+net install disco, from("${pkg}") replace
+
+capture log close _all
+log using "${root}/results/cdf_simulations.log", replace text
 
 ************************************************************
 * 1. Set up the dataset
@@ -127,9 +135,9 @@ rename QT_mix1   q_mix
 
 * 3) Overlay lines + custom legend, axis labels, etc.
 twoway ///
-    (line q_true tau,  lcolor(black) lwidth(medium)) ///
-    (line q_bary tau,  lcolor(blue)  lpattern(dash)      lwidth(medium)) ///
-    (line q_mix  tau,  lcolor(red)   lpattern(dash_dot)  lwidth(medium)), ///
+    (line q_true tau,  lcolor(black) lpattern(solid)    lwidth(medthick)) ///
+    (line q_bary tau,  lcolor(black) lpattern(dash)     lwidth(medium)) ///
+    (line q_mix  tau,  lcolor(gs7)   lpattern(dash_dot) lwidth(medium)), ///
     /// Legend formatting
     legend(order(1 "True (Target)" 2 "Qtile-Based" 3 "CDF-Based") ///
            ring(0) position(5) cols(1) size(large)) ///
@@ -139,7 +147,7 @@ twoway ///
     /// Axis titles
     xtitle("Quantile", size(vlarge)) ///
     ytitle("Y", size(vlarge)) ///
-    name(qf_compare, replace)
+    scheme(sj) name(qf_compare, replace)
 
 graph export "${figs}/mixture_quantile.pdf", replace
 
@@ -169,9 +177,9 @@ rename CT_mix1    c_mix
 
 * 3) Overlay lines + custom legend, axis labels, etc.
 twoway ///
-    (line c_true  grid_val, lcolor(black) lwidth(medium)) ///
-    (line c_bary  grid_val, lcolor(blue)  lpattern(dash)     lwidth(medium)) ///
-    (line c_mix   grid_val, lcolor(red)   lpattern(dash_dot) lwidth(medium)), ///
+    (line c_true  grid_val, lcolor(black) lpattern(solid)    lwidth(medthick)) ///
+    (line c_bary  grid_val, lcolor(black) lpattern(dash)     lwidth(medium)) ///
+    (line c_mix   grid_val, lcolor(gs7)   lpattern(dash_dot) lwidth(medium)), ///
     /// Legend formatting
     legend(order(1 "True (Target)" 2 "Qtile-Based" 3 "CDF-based") ///
            ring(0) position(5) cols(1) size(large)) ///
@@ -181,7 +189,7 @@ twoway ///
     /// Axis titles
     xtitle("y", size(vlarge)) ///
     ytitle("Pr(Y ≤ y)", size(vlarge)) ///
-    name(cdf_compare, replace)
+    scheme(sj) name(cdf_compare, replace)
 
 graph export "${figs}/mixture_cdf.pdf", replace
 
@@ -234,16 +242,18 @@ rename Q_5 Qtarget
 * 4) Plot them on a single graph
 ********************************************************************************
 twoway ///
-    (line Q1 tau,      lcolor(red)    lwidth(medium)) ///
-    (line Q2 tau,      lcolor(blue)   lwidth(medium)) ///
-    (line Q3 tau,      lcolor(green)  lwidth(medium)) ///
-    (line Q4 tau,      lcolor(orange) lwidth(medium)) ///
-    (line Qtarget tau, lcolor(black)  lwidth(thick)), ///
+    (line Q1 tau,      lcolor(gs6)   lpattern(solid)   lwidth(medium)) ///
+    (line Q2 tau,      lcolor(gs6)   lpattern(dash)    lwidth(medium)) ///
+    (line Q3 tau,      lcolor(gs11)  lpattern(solid)   lwidth(medium)) ///
+    (line Q4 tau,      lcolor(gs11)  lpattern(dash)    lwidth(medium)) ///
+    (line Qtarget tau, lcolor(black) lpattern(solid)   lwidth(thick)), ///
     legend(order(1 "Donor #1" 2 "Donor #2" 3 "Donor #3" 4 "Donor #4" 5 "Target") ///
            ring(0) pos(5) cols(1)) ///
     xlabel(0(.2)1, grid labsize(large)) ///
     ylabel(1(1)4, angle(horiz) grid labsize(large)) ///
     xtitle("Quantile", size(large)) ytitle("Y", size(large)) ///
-    name(donors_qf, replace)
+    scheme(sj) name(donors_qf, replace)
 	
 graph export "${figs}/mixture_raw_quantiles.pdf", replace
+
+log close

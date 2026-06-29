@@ -1,1 +1,4 @@
 /data/in/*.csv.gz
+.DS_Store
+*.stswp
+~*.stswp

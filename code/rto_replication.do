@@ -1,21 +1,23 @@
-clear
-
-net install disco, from("https://raw.githubusercontent.com/Davidvandijcke/DiSCos_stata/dev/src/") replace
-net install gzimport, from(https://raw.githubusercontent.com/mdroste/stata-gzimport/master/) replace
-
-net install disco, from("/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/stata_repo/src") replace
-
-
+version 18.0
+clear all
+set more off
 
 //**************************
 // Set Paths
 //**************************
-global maindir = "/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication"
-global figs = "${maindir}/results/figs"
-global dataIn = "${maindir}/data/in"
-global dataOut = "${maindir}/data/out"
+// ---- EDIT this to your replication-package root directory ----
+global root = "/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication_submission_16jan2024"
+global figs = "${root}/results/figs"
+global dataIn = "${root}/data/in"
+global dataOut = "${root}/data/out"
 
+// Install the bundled disco package (ships in src/ of this replication package)
+global pkg = "${root}/src"
+net install disco, from("${pkg}") replace
 
+cd "$dataOut"
+capture log close _all
+log using "${root}/results/rto_replication.log", replace text
 
 //**************************
 // Load data and anonymize
@@ -109,10 +111,9 @@ if `process_data' {
 //                qmethod=NULL) # seed 5
 
 
-cd "$dataOut"
 
-capture sjlog close
-sjlog using "tenure_analysis", replace 
+// capture sjlog close
+// sjlog using "tenure_analysis", replace 
 
 // load and inspect data
 use "tenure_anonymized.dta", clear 
@@ -124,16 +125,16 @@ disco y_col id_col time_col, idtarget(2) t0(3) agg("quantileDiff") ///
 	seed(12143) g(10) m(100) ci boots(300) 
 disco_weight id_col company_name, n(5)
 disco_estat summary
-disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) scheme("stsj")
+disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) color1(black) cicolor(gs12) scheme(sj)
 graph export "${figs}/tenure_quantileDiff.pdf", replace
 
 // plot quantile functions separately
 disco_plot, title(" ") ytitle("Tenure (Days)") agg("quantile") /// 
-	yrange(0 3000) scheme("stsj") // vline(0)
+	yrange(0 3000) color1(black) color2(black) scheme(sj)
 graph export "${figs}/tenure_quantile.pdf", replace
 
 
-capture sjlog close
+// capture sjlog close
 
 
 
@@ -143,13 +144,9 @@ capture sjlog close
 // Reproduce title results
 //**************************
 
-// disco <- DiSCo(grouped, id_col.target = id_col.target, t0 = t0, q_max=0.9, G = G, M=M, num.cores=20,
-//                cl=0.95,uniform=TRUE, permutation = TRUE, CI = TRUE, boots = 1000, simplex=TRUE, seed=30, qtype=7,
-//                qmethod=NULL) # seed 5
-
 cd "$dataOut"
 
-sjlog using "titles_analysis.log", replace 
+// sjlog using "titles_analysis.log", replace 
 
 use "titles_anonymized.dta", clear 
 list in 1/5, ab(20) 
@@ -166,16 +163,16 @@ disco_estat summary
 
 // plot CDF effects
 disco_plot, title(" ") ytitle("Change in CDF") hline(0) categorical /// 
-	scheme("stsj") color("bluishgray") 
+	color1(gs10) cicolor(gs4) scheme(sj)
 graph export "${figs}/title_cdfDiff.pdf", replace
 
 // plot synthetic vs. treated CDF
-disco_plot, title(" ") ytitle("Tenure (Days)") agg("cdf") scheme("stsj")
+disco_plot, title(" ") ytitle("CDF") agg("cdf") color1(black) color2(black) scheme(sj)
 
 graph export "${figs}/title_cdf.pdf", replace
 
-capture sjlog close, replace
-
+// capture sjlog close, replace
+capture log close
 
 
 
