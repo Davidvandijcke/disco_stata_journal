@@ -39,7 +39,8 @@ disco_plot, title(" ") ytitle("Change in CDF") hline(0) categorical ///
 graph export "title_cdfDiff.pdf", replace
 
 * plot synthetic vs. treated CDF
-disco_plot, title(" ") ytitle("CDF") agg("cdf") color1(black) color2(black) scheme(sj)
+disco_plot, title(" ") ytitle("CDF") agg("cdf") color1(black) ///
+	color2(black) scheme(sj)
 graph export "title_cdf.pdf", replace
 
 log close

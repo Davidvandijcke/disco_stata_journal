@@ -1,9 +1,9 @@
 -------------------------------------------------------------------------------
       name:  <unnamed>
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
-> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/cdf_simulations.log
+> cke/Flo_GSRA/sj_replication_submission_july2026/examples/cdf_simulations.log
   log type:  text
- opened on:  11 Jul 2026, 15:20:07
+ opened on:  11 Jul 2026, 16:13:20
 
 . 
 . ************************************************************
@@ -202,7 +202,7 @@ note: mixture with m() > 200 can be very slow; consider a smaller m(), e.g. m(1
 . tempfile simdata
 
 . save `simdata'
-file /var/folders/zs/20zk30ss1dq_90y7_2t9wgvc0000gn/T//St87253.000001 saved
+file /var/folders/zs/20zk30ss1dq_90y7_2t9wgvc0000gn/T//St31840.000001 saved
     as .dta format
 
 . 
@@ -292,12 +292,12 @@ Number of observations (_N) was 0, now 100.
 . 
 . * 3) Overlay lines + custom legend, axis labels, etc.
 . twoway ///
->     (line c_true  grid_val, lcolor(black) lpattern(solid)    lwidth(medthick)
-> ) ///
+>     (line c_true  grid_val, lcolor(black) lpattern(solid) lwidth(medthick)) /
+> //
 >     (line c_bary  grid_val, lcolor(black) lpattern(dash)     lwidth(medium)) 
 > ///
->     (line c_mix   grid_val, lcolor(gs7)   lpattern(dash_dot) lwidth(medium)),
->  ///
+>     (line c_mix   grid_val, lcolor(gs7) lpattern(dash_dot) lwidth(medium)), /
+> //
 >     /// Legend formatting
 >     legend(order(1 "True (Target)" 2 "Qtile-Based" 3 "CDF-based") ///
 >            ring(0) position(5) cols(1) size(large)) ///
@@ -390,8 +390,8 @@ Number of observations (_N) was 0, now 100.
 >     (line Q3 tau,      lcolor(gs11)  lpattern(solid)   lwidth(medium)) ///
 >     (line Q4 tau,      lcolor(gs11)  lpattern(dash)    lwidth(medium)) ///
 >     (line Qtarget tau, lcolor(black) lpattern(solid)   lwidth(thick)), ///
->     legend(order(1 "Donor #1" 2 "Donor #2" 3 "Donor #3" 4 "Donor #4" 5 "Targe
-> t") ///
+>     legend(order(1 "Donor #1" 2 "Donor #2" 3 "Donor #3" 4 "Donor #4" ///
+>            5 "Target") ///
 >            ring(0) pos(5) cols(1)) ///
 >     xlabel(0(.2)1, grid labsize(large)) ///
 >     ylabel(1(1)4, angle(horiz) grid labsize(large)) ///
@@ -406,7 +406,7 @@ file mixture_raw_quantiles.pdf saved as PDF format
 . log close
       name:  <unnamed>
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
-> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/cdf_simulations.log
+> cke/Flo_GSRA/sj_replication_submission_july2026/examples/cdf_simulations.log
   log type:  text
- closed on:  11 Jul 2026, 15:20:15
+ closed on:  11 Jul 2026, 16:13:27
 -------------------------------------------------------------------------------

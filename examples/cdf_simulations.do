@@ -178,9 +178,9 @@ rename CT_mix1    c_mix
 
 * 3) Overlay lines + custom legend, axis labels, etc.
 twoway ///
-    (line c_true  grid_val, lcolor(black) lpattern(solid)    lwidth(medthick)) ///
+    (line c_true  grid_val, lcolor(black) lpattern(solid) lwidth(medthick)) ///
     (line c_bary  grid_val, lcolor(black) lpattern(dash)     lwidth(medium)) ///
-    (line c_mix   grid_val, lcolor(gs7)   lpattern(dash_dot) lwidth(medium)), ///
+    (line c_mix   grid_val, lcolor(gs7) lpattern(dash_dot) lwidth(medium)), ///
     /// Legend formatting
     legend(order(1 "True (Target)" 2 "Qtile-Based" 3 "CDF-based") ///
            ring(0) position(5) cols(1) size(large)) ///
@@ -243,7 +243,8 @@ twoway ///
     (line Q3 tau,      lcolor(gs11)  lpattern(solid)   lwidth(medium)) ///
     (line Q4 tau,      lcolor(gs11)  lpattern(dash)    lwidth(medium)) ///
     (line Qtarget tau, lcolor(black) lpattern(solid)   lwidth(thick)), ///
-    legend(order(1 "Donor #1" 2 "Donor #2" 3 "Donor #3" 4 "Donor #4" 5 "Target") ///
+    legend(order(1 "Donor #1" 2 "Donor #2" 3 "Donor #3" 4 "Donor #4" ///
+           5 "Target") ///
            ring(0) pos(5) cols(1)) ///
     xlabel(0(.2)1, grid labsize(large)) ///
     ylabel(1(1)4, angle(horiz) grid labsize(large)) ///

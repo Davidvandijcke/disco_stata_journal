@@ -34,7 +34,8 @@ disco_weight id_col company_name, n(5)
 disco_estat summary
 
 * plot quantile effects
-disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) color1(black) cicolor(gs12) scheme(sj)
+disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) ///
+	color1(black) cicolor(gs12) scheme(sj)
 graph export "tenure_quantileDiff.pdf", replace
 
 * plot observed vs. synthetic quantile functions

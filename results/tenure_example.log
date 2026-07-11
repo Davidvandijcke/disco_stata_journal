@@ -1,9 +1,9 @@
 -------------------------------------------------------------------------------
       name:  <unnamed>
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
-> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/tenure_example.log
+> cke/Flo_GSRA/sj_replication_submission_july2026/examples/tenure_example.log
   log type:  text
- opened on:  11 Jul 2026, 15:20:16
+ opened on:  11 Jul 2026, 16:13:27
 
 . 
 . * load and inspect the anonymized tenure data
@@ -60,8 +60,8 @@ Summary of quantile effects
 
 . 
 . * plot quantile effects
-. disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) color1(
-> black) cicolor(gs12) scheme(sj)
+. disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) ///
+>         color1(black) cicolor(gs12) scheme(sj)
 
 . graph export "tenure_quantileDiff.pdf", replace
 file tenure_quantileDiff.pdf saved as PDF format
@@ -78,7 +78,7 @@ file tenure_quantile.pdf saved as PDF format
 . log close
       name:  <unnamed>
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
-> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/tenure_example.log
+> cke/Flo_GSRA/sj_replication_submission_july2026/examples/tenure_example.log
   log type:  text
- closed on:  11 Jul 2026, 15:20:29
+ closed on:  11 Jul 2026, 16:13:38
 -------------------------------------------------------------------------------
