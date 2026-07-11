@@ -1,4 +1,4 @@
-program define gen_data
+program define disco_gendata
     version 18.0
 	
 	clear

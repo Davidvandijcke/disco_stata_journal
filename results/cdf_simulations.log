@@ -3,7 +3,7 @@
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
 > cke/Flo_GSRA/sj_replication_submission_july2026/examples/cdf_simulations.log
   log type:  text
- opened on:  11 Jul 2026, 16:13:20
+ opened on:  11 Jul 2026, 16:28:26
 
 . 
 . ************************************************************
@@ -202,7 +202,7 @@ note: mixture with m() > 200 can be very slow; consider a smaller m(), e.g. m(1
 . tempfile simdata
 
 . save `simdata'
-file /var/folders/zs/20zk30ss1dq_90y7_2t9wgvc0000gn/T//St31840.000001 saved
+file /var/folders/zs/20zk30ss1dq_90y7_2t9wgvc0000gn/T//St44116.000001 saved
     as .dta format
 
 . 
@@ -408,5 +408,5 @@ file mixture_raw_quantiles.pdf saved as PDF format
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
 > cke/Flo_GSRA/sj_replication_submission_july2026/examples/cdf_simulations.log
   log type:  text
- closed on:  11 Jul 2026, 16:13:27
+ closed on:  11 Jul 2026, 16:28:34
 -------------------------------------------------------------------------------

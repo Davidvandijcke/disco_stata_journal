@@ -51,7 +51,7 @@ Stored results:
     e(cdiff_upper):    Upper bound for CDF differences
 
 Author: David Van Dijcke
-Version: 1.2.0
+Version: 1.2.1
 Date: July 2026
 */
 

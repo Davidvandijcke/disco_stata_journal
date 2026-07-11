@@ -1,4 +1,4 @@
-program define quadprog, rclass
+program define _disco_qp, rclass
     version 18.0
     args mG mg0 mCE mce0 mCI mci0 mresults
     

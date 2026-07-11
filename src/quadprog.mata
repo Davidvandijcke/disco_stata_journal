@@ -38,7 +38,7 @@ matrix solve_quadprog(real matrix G,
     st_matrix(tmpres, J(1, n + 1, 0))
     
     // Build command string
-    cmd = "quadprog " + 
+    cmd = "_disco_qp " + 
           "matrix(" + tmpG + ") " + 
           "matrix(" + tmpg0 + ") " + 
           "matrix(" + tmpCE + ") " + 

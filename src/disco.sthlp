@@ -147,7 +147,7 @@ the plot type adapts to {opt agg()}. Equivalent to running {cmd:disco_plot} with
 {title:Examples}
 
 {pstd}Basic usage with confidence intervals and synthetic data (do run):{p_end}
-{phang2}{cmd:. gen_data}{p_end}
+{phang2}{cmd:. disco_gendata}{p_end}
 {phang2}{cmd:. disco y id time, idtarget(1) t0(3) ci boots(200) cl(0.95)}{p_end}
 
 {pstd}Using mixture approach (don't run):{p_end}
@@ -158,7 +158,7 @@ the plot type adapts to {opt agg()}. Equivalent to running {cmd:disco_plot} with
 
 {pstd} Post-estimation tables and graphs, see {help "disco##related":Additional commands}
  (do run) {p_end}
- {phang2}{cmd:. gen_data}{p_end}
+ {phang2}{cmd:. disco_gendata}{p_end}
 {phang2}{cmd:. disco y id time, idtarget(1) t0(3) ci boots(200) cl(0.95)}{p_end}
 {phang2}{cmd:. disco_estat summary}{p_end}
 {phang2}{cmd:. disco_plot}{p_end}

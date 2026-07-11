@@ -29,8 +29,8 @@ Help keywords: DiSCo, Stata, cdf, quantile, synthetic control, replication
 File list:
 - src: the disco Stata package. The example do-files install it automatically with
   net install. It contains the command and help files (disco.ado, disco_estat.ado,
-  disco_plot.ado, disco_weight.ado, quadprog.ado and their .sthlp files), the
-  compiled Mata library (ldisco.mlib), the platform plugins
+  disco_plot.ado, disco_weight.ado, disco_gendata.ado and their .sthlp files),
+  the internal helper _disco_qp.ado, the compiled Mata library (ldisco.mlib), the platform plugins
   (quadprog_mata_{mac,mac_intel,linux,win}), the Mata source (disco_utils.mata,
   quadprog.mata, build_disco_mlib.do), and the package index (disco.pkg, stata.toc).
 - examples: self-contained example do-files and the datasets they use. Each file
