@@ -1,34 +1,30 @@
 -------------------------------------------------------------------------------
       name:  <unnamed>
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
-> cke/Flo_GSRA/sj_replication_submission_16jan2024/results/cdf_simulations.log
+> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/cdf_simulations.log
   log type:  text
- opened on:  26 Jun 2026, 13:58:23
+ opened on:  11 Jul 2026, 15:20:07
 
 . 
 . ************************************************************
 . * 1. Set up the dataset
 . ************************************************************
-. clear all
-
 . set seed 12349   // For reproducibility; you can set any seed you like
 
 . 
-. * We want 4 distributions, each with 100 draws -> total = 400
+. * We want 4 donor distributions plus a target, each with 100 draws
 . set obs 500
 Number of observations (_N) was 0, now 500.
 
 . 
 . ************************************************************
-. * 2. Create an identifier for distribution "id" 
-. *    and a uniform random variable "u"
+. * 2. Create an identifier "id" and a uniform random variable "u"
 . ************************************************************
 . gen id = .
 (500 missing values generated)
 
 . gen u = runiform()
 
-. 
 . 
 . forvalues i = 1/5 {
   2.     // Lower bound
@@ -46,9 +42,8 @@ Number of observations (_N) was 0, now 500.
 (100 real changes made)
 
 . 
-. 
 . ************************************************************
-. * 3. Generate the outcome variable "y" 
+. * 3. Generate the outcome variable "y"
 . *    according to different probability distributions
 . ************************************************************
 . gen y = .
@@ -167,8 +162,6 @@ Number of observations (_N) was 0, now 500.
      +--------+
 
 . 
-. 
-. 
 . gen t = 1
 
 . 
@@ -192,6 +185,8 @@ Number of observations (_N) was 0, now 500.
 . * (B) Mixture approach
 . ***************************************************************
 . disco y id t, idtarget(5) t0(2) mixture
+note: mixture with m() > 200 can be very slow; consider a smaller m(), e.g. m(1
+> 00).
 
 . 
 . matrix Mix_Qtarget  = e(quantile_t)      // True (target) QF
@@ -203,8 +198,13 @@ Number of observations (_N) was 0, now 500.
 . matrix Mix_Csynth   = e(cdf_synth)       // Mixture synthetic CDF
 
 . 
-. 
-. 
+. * keep the simulated data for the donor-quantile plot below
+. tempfile simdata
+
+. save `simdata'
+file /var/folders/zs/20zk30ss1dq_90y7_2t9wgvc0000gn/T//St87253.000001 saved
+    as .dta format
+
 . 
 . ***************************************************************
 . * Plot quantile: True vs. Barycenter vs. Mixture
@@ -253,17 +253,12 @@ Number of observations (_N) was 0, now 100.
 >     scheme(sj) name(qf_compare, replace)
 
 . 
-. graph export "${figs}/mixture_quantile.pdf", replace
-file /Users/davidvandijcke/University of Michigan Dropbox/David Van
-    Dijcke/Flo_GSRA/sj_replication_submission_16jan2024/results/figs/mixture_
-    > quantile.pdf saved as PDF format
+. graph export "mixture_quantile.pdf", replace
+file mixture_quantile.pdf saved as PDF format
 
 . 
 . restore
 
-. 
-. 
-. 
 . 
 . ***************************************************************
 . * Plot CDF: True vs. Barycenter vs. Mixture
@@ -315,16 +310,12 @@ Number of observations (_N) was 0, now 100.
 >     scheme(sj) name(cdf_compare, replace)
 
 . 
-. graph export "${figs}/mixture_cdf.pdf", replace
-file /Users/davidvandijcke/University of Michigan Dropbox/David Van
-    Dijcke/Flo_GSRA/sj_replication_submission_16jan2024/results/figs/mixture_
-    > cdf.pdf saved as PDF format
+. graph export "mixture_cdf.pdf", replace
+file mixture_cdf.pdf saved as PDF format
 
 . 
 . restore
 
-. 
-. 
 . 
 . *****************************************************************************
 > **
@@ -334,26 +325,21 @@ file /Users/davidvandijcke/University of Michigan Dropbox/David Van
 . *****************************************************************************
 > **
 . 
-. save temp, replace
-file temp.dta saved
-
-. 
-. 
 . *****************************************************************************
 > ***
-. * 2) Build a 100 x 5 matrix "donorQ"
+. * Build a 100 x 5 matrix "donorQ"
 . *****************************************************************************
 > ***
 . matrix donorQ = J(100, 5, .)
 
 . 
 . forvalues d = 1/5 {
-  2.     // Reload original data each iteration
-.     use temp, clear
+  2.     // Reload the simulated data each iteration
+.     use `simdata', clear
   3.     keep if id == `d'
-  4.     
+  4. 
 .     // Stata immediate command: _pctile
-.     // which puts the quantiles in r(c_1) ... r(c_100)
+.     // which puts the quantiles in r(r1) ... r(r100)
 .     _pctile y, nquantiles(101)
   5. 
 .     forvalues j = 1/100 {
@@ -369,7 +355,7 @@ file temp.dta saved
 . 
 . *****************************************************************************
 > ***
-. * 3) Turn that matrix into a new dataset of 100 rows
+. * Turn that matrix into a new dataset of 100 rows
 . *****************************************************************************
 > ***
 . clear
@@ -395,7 +381,7 @@ Number of observations (_N) was 0, now 100.
 . 
 . *****************************************************************************
 > ***
-. * 4) Plot them on a single graph
+. * Plot them on a single graph
 . *****************************************************************************
 > ***
 . twoway ///
@@ -412,17 +398,15 @@ Number of observations (_N) was 0, now 100.
 >     xtitle("Quantile", size(large)) ytitle("Y", size(large)) ///
 >     scheme(sj) name(donors_qf, replace)
 
-.         
-. graph export "${figs}/mixture_raw_quantiles.pdf", replace
-file /Users/davidvandijcke/University of Michigan Dropbox/David Van
-    Dijcke/Flo_GSRA/sj_replication_submission_16jan2024/results/figs/mixture_
-    > raw_quantiles.pdf saved as PDF format
+. 
+. graph export "mixture_raw_quantiles.pdf", replace
+file mixture_raw_quantiles.pdf saved as PDF format
 
 . 
 . log close
       name:  <unnamed>
        log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
-> cke/Flo_GSRA/sj_replication_submission_16jan2024/results/cdf_simulations.log
+> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/cdf_simulations.log
   log type:  text
- closed on:  26 Jun 2026, 13:58:31
+ closed on:  11 Jul 2026, 15:20:15
 -------------------------------------------------------------------------------

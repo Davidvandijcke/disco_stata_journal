@@ -51,8 +51,8 @@ Stored results:
     e(cdiff_upper):    Upper bound for CDF differences
 
 Author: David Van Dijcke
-Version: 1.1.0
-Date: June 2026
+Version: 1.2.0
+Date: July 2026
 */
 
 
@@ -154,6 +154,17 @@ program define disco, eclass
 		di as err "cl must be >=0 and <=1"
         exit 198
 	}
+
+    // Set the random-number seed for bootstrap reproducibility
+    if `seed' != -1 {
+        set seed `seed'
+    }
+
+    // The mixture weight step solves a linear program with 2*m()+J variables
+    if `mixture_flag' == 1 & `m' > 200 {
+        di as txt "note: mixture with m() > 200 can be very slow; consider a smaller m(), e.g. m(100)."
+    }
+
 	// Preserve dataset before Mata operations
     tempname base
     preserve

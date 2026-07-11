@@ -13,143 +13,212 @@ struct CI_out {
               cdiff_upper       // Upper bound for CDF differences
 }
 
-// Output structure for bootstrap iteration
-struct iter_out {
-    real vector target_qG,        // Target quantiles at G points (for final)
-              target_cdfG,      // Target CDF at G points (for final)
-              weights           // Optimal weights
-    real matrix controls_qM,    // Control quantiles at M points (for weighting)
-              controls_cdfM,    // Control CDF at M points (for weighting)
-              controls_qG,      // Control quantiles at G points (for final)
-              controls_cdfG     // Control CDF at G points (for final)
-}
-
-// Output structure for bootstrap results
-struct boot_out {
-    real matrix quantile_diff,  // Quantile differences
-              cdf_diff,         // CDF differences
-              quantile_synth,   // Synthetic quantiles
-              cdf_synth,        // Synthetic CDFs
-              quantile_t,       // Target quantiles
-              cdf_t             // Target CDFs
-}
-
 // Final returned structure for disco
 struct disco_out {
-    real matrix weights, quantile_diff, cdf_diff, quantile_synth, cdf_synth,  
+    real matrix weights, quantile_diff, cdf_diff, quantile_synth, cdf_synth,
                 quantile_t, cdf_t, cids
 }
 
 // -----------------------------------------------------------------------------
 // Returns unique values from a vector
-real vector get_unique(real vector x) 
+real vector get_unique(real vector x)
 {
     real scalar N
     real vector sortedx, y
-    
+
     sortedx = sort(x,1)
     y       = uniqrows(sortedx)
     return(y)
 }
 
 // -----------------------------------------------------------------------------
-// Compute quantiles at arbitrary probabilities p using type=7 interpolation
-real vector disco_quantile_points(real vector X, real vector p) 
+// Evenly spaced probability grid on [q_min, q_max]. Built with the same
+// scalar recursion as the original code so the grid values are bit-identical.
+real vector disco_prob_grid(real scalar Npoints, real scalar q_min,
+                            real scalar q_max)
 {
-    real scalar N, i, prob, alpha, floor_alpha, gamma, idx
-    real vector Xs, out
-    
-    N = length(X)
-    if (N==0) {
-        out = J(length(p),1,.)
-        return(out)
+    real scalar j2
+    real vector p
+
+    p = J(Npoints,1,.)
+    for (j2=1; j2<=Npoints; j2++) {
+        p[j2,1] = q_min + (q_max - q_min)*(j2-1)/(Npoints-1)
     }
-
-    Xs  = sort(X,1)
-    out = J(length(p),1,.)
-
-    for (i=1; i<=length(p); i++) {
-        prob = p[i]
-        if (prob<=0) {
-            out[i] = Xs[1]
-        }
-        else if (prob>=1) {
-            out[i] = Xs[N]
-        } 
-        else {
-            alpha       = (N-1)*prob + 1
-            floor_alpha = floor(alpha)
-            gamma       = alpha - floor_alpha
-
-            if (floor_alpha<1) {
-                out[i] = Xs[1]
-            } 
-            else if (floor_alpha>=N) {
-                out[i] = Xs[N]
-            } 
-            else {
-                idx = floor_alpha
-                out[i] = Xs[idx]*(1-gamma) + Xs[idx+1]*gamma
-            }
-        }
-    }
-    return(out)
+    return(p)
 }
 
+// -----------------------------------------------------------------------------
+// Type=7 quantiles of PRE-SORTED data at probabilities p, vectorized. The
+// clamping reproduces the p<=0, p>=1, and boundary branches of the original
+// per-point loop; missing p follows the p>=1 branch.
+real vector disco_quantile_sorted(real vector Xs, real vector p)
+{
+    real scalar N
+    real vector pp, ones, alpha, fl, gam
 
+    N = rows(Xs)
+    if (N==0) return(J(rows(p),1,.))
+    if (N==1) return(J(rows(p),1,Xs[1]))
+
+    pp    = editmissing(p, 1)
+    ones  = J(rows(pp),1,1)
+    alpha = (N-1):*pp :+ 1
+    fl    = floor(alpha)
+    fl    = rowmax((fl, ones))
+    fl    = rowmin((fl, (N-1):*ones))
+    gam   = alpha :- fl
+    gam   = rowmax((gam, 0:*ones))
+    gam   = rowmin((gam, ones))
+    return(Xs[fl]:*(1:-gam) :+ Xs[fl:+1]:*gam)
+}
+
+// -----------------------------------------------------------------------------
+// Compute quantiles at arbitrary probabilities p using type=7 interpolation
+real vector disco_quantile_points(real vector X, real vector p)
+{
+    return(disco_quantile_sorted((cols(X)>1 ? sort(X',1) : sort(X,1)), p))
+}
 
 // -----------------------------------------------------------------------------
 // Compute quantiles at a user-chosen number of points (Npoints)
-real vector disco_quantile(real vector X, real scalar Npoints, 
-                           real scalar q_min, real scalar q_max) 
+real vector disco_quantile(real vector X, real scalar Npoints,
+                           real scalar q_min, real scalar q_max)
 {
-    real scalar j2, p_j
-    real vector p
-    p = J(Npoints,1,.)
+    return(disco_quantile_points(X, disco_prob_grid(Npoints, q_min, q_max)))
+}
 
-    for (j2=1; j2<=Npoints; j2++) {
-        p_j      = q_min + (q_max - q_min)*(j2-1)/(Npoints-1)
-        p[j2,1]  = p_j
+// -----------------------------------------------------------------------------
+// Empirical CDF of PRE-SORTED data at grid points: #(X <= g)/N, exact under
+// ties. Binary search per grid point when the grid is small relative to the
+// data; otherwise one merge pass, where data rows (flag 0) sort before equal
+// grid rows (flag 1) so the running data count at a grid row is #(X <= g).
+real vector disco_cdf_sorted(real vector Xs, real vector grid)
+{
+    real scalar N, G, g5, lo, hi, mid
+    real vector gc, ord, isX, cum, sel, out
+    real matrix Z
+
+    gc = (cols(grid)>1 ? grid' : grid)
+    N  = rows(Xs)
+    G  = rows(gc)
+
+    if (8*G <= N) {
+        out = J(G,1,0)
+        for (g5=1; g5<=G; g5++) {
+            lo = 0
+            hi = N + 1
+            while (hi - lo > 1) {
+                mid = floor((lo+hi)/2)
+                if (Xs[mid] <= gc[g5]) lo = mid
+                else                   hi = mid
+            }
+            out[g5] = lo/N
+        }
+        return(out)
     }
-    return(disco_quantile_points(X, p))
+
+    Z   = (Xs, J(N,1,0)) \ (gc, J(G,1,1))
+    ord = order(Z, (1,2))
+    isX = (ord :<= N)
+    cum = runningsum(isX)
+    sel = selectindex(1 :- isX)
+    out = J(G,1,.)
+    out[ord[sel] :- N] = cum[sel] :/ N
+    return(out)
 }
 
 // -----------------------------------------------------------------------------
 // Compute CDF values at specified grid points
-real vector cdf_builder(real vector x, real vector grid) 
+real vector cdf_builder(real vector x, real vector grid)
 {
-    real scalar N, G, g3, pos
-    real vector Xs, out
-
-    Xs   = sort(x, 1)
-    N    = length(Xs)
-    G    = length(grid)
-    out  = J(G,1,0)
-
-    for (g3=1; g3<=G; g3++) {
-        pos       = sum(Xs :<= grid[g3])
-        out[g3,1] = pos/N
-    }
-    return(out)
+    return(disco_cdf_sorted((cols(x)>1 ? sort(x',1) : sort(x,1)), grid))
 }
 
 // -----------------------------------------------------------------------------
 // Helper to compute CDF at given grid points
-real vector cdf_at_points(real vector x, real vector grid) 
+real vector cdf_at_points(real vector x, real vector grid)
 {
-    real scalar N, G, g4, pos
-    real vector xs, out
+    return(cdf_builder(x, grid))
+}
 
-    xs  = sort(x, 1)
-    N   = length(xs)
-    G   = length(grid)
-    out = J(G, 1, 0)
+// -----------------------------------------------------------------------------
+// Sorted with-replacement resample read directly off a PRE-SORTED cell:
+// exponential spacings generate the order statistics of n iid U(0,1) draws,
+// so Xs[ceil(n*U_(i))] is the sorted version of a bootstrap resample without
+// an O(n log n) sort per draw.
+real vector disco_boot_sorted(real vector Xs)
+{
+    real scalar n
+    real vector S
 
-    for (g4=1; g4<=G; g4++) {
-        pos         = sum(xs :<= grid[g4])
-        out[g4,1]   = pos / N
+    n = rows(Xs)
+    if (n==0) return(Xs)
+    S = runningsum(-ln(runiform(n+1,1)))
+    return(Xs[ceil((S[|1 \ n|] :/ S[n+1]) :* n)])
+}
+
+// -----------------------------------------------------------------------------
+// Split the panel once into per-(period, unit) outcome vectors, sorted
+// ascending. Column 1 is the target, column 1+j is cids[j]. The estimator,
+// bootstrap, and permutation test only touch these cells afterwards, which
+// avoids rescanning the full dataset inside hot loops.
+pointer(real colvector) matrix disco_build_cells(real vector y, real vector id,
+    real vector tt, real scalar target_id, real scalar T_max, real vector cids)
+{
+    real scalar t6, j6, Jn
+    real vector yt, idt, cd6
+    pointer(real colvector) matrix P
+
+    Jn = length(cids)
+    P  = J(T_max, Jn+1, NULL)
+    for (t6=1; t6<=T_max; t6++) {
+        yt  = select(y,  tt:==t6)
+        idt = select(id, tt:==t6)
+        cd6 = select(yt, idt:==target_id)
+        P[t6,1] = (rows(cd6)>0 ? &(sort(cd6,1)) : &J(0,1,.))
+        for (j6=1; j6<=Jn; j6++) {
+            cd6 = select(yt, idt:==cids[j6])
+            P[t6,1+j6] = (rows(cd6)>0 ? &(sort(cd6,1)) : &J(0,1,.))
+        }
     }
-    return(out)
+    return(P)
+}
+
+// -----------------------------------------------------------------------------
+// Quantile/CDF stores for all units and periods, computed once from the
+// sorted cells. QG and CG stack G rows per period for every period; WM holds
+// the M-grid weighting objects for the pre-treatment periods only: quantile
+// functions when mixture==0, CDFs when mixture==1. M-grid objects are never
+// needed for post-treatment periods or for the other mode.
+void disco_precompute(pointer(real colvector) matrix P, real scalar T0,
+    real scalar T_max, real scalar M, real scalar G,
+    real scalar q_min, real scalar q_max, real scalar mixture,
+    real vector gridG, real vector gridM,
+    real matrix QG, real matrix CG, real matrix WM)
+{
+    real scalar nu, t7, u7, npre
+    real vector pG, pM, cell
+
+    nu   = cols(P)
+    npre = max((T0-1, 0))
+    pG   = disco_prob_grid(G, q_min, q_max)
+    pM   = disco_prob_grid(M, q_min, q_max)
+
+    QG = J(G*T_max, nu, .)
+    CG = J(G*T_max, nu, .)
+    WM = J(M*npre,  nu, .)
+
+    for (t7=1; t7<=T_max; t7++) {
+        for (u7=1; u7<=nu; u7++) {
+            cell = *(P[t7,u7])
+            QG[|(t7-1)*G+1, u7 \ t7*G, u7|] = disco_quantile_sorted(cell, pG)
+            CG[|(t7-1)*G+1, u7 \ t7*G, u7|] = disco_cdf_sorted(cell, gridG)
+            if (t7<=T0-1) {
+                WM[|(t7-1)*M+1, u7 \ t7*M, u7|] = (mixture==1 ?
+                    disco_cdf_sorted(cell, gridM) : disco_quantile_sorted(cell, pM))
+            }
+        }
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -185,14 +254,14 @@ real vector disco_solve_weights(real matrix control_quantiles, real vector targe
 }
 
 //------------------------------------------
-// Reverted disco_mixture_weights function
+// Mixture (CDF-based) weights via linear programming
 //------------------------------------------
 real vector disco_mixture_weights(real matrix control_cdf, real vector target_cdf, real scalar simplex)
 {
     // --- Declarations ---
-    real scalar J, Grows, total_vars, g2, val, ss
+    real scalar J, Grows, total_vars, val, ss
     real matrix c, ecmat, lowerbd, upperbd
-    real vector bec, sol, w
+    real vector bec, sol, w, tcdf
     class LinearProgram scalar q
 
     // "Grows" = number of grid points, same as rows in control_cdf
@@ -200,33 +269,15 @@ real vector disco_mixture_weights(real matrix control_cdf, real vector target_cd
     Grows      = rows(control_cdf)
     J          = cols(control_cdf)
     total_vars = J + 2*Grows
+    tcdf       = (cols(target_cdf)>1 ? target_cdf' : target_cdf)
 
-    // c is 1×(J + 2*Grows)
-    c = J(1, total_vars, 0)
-    // We assign 1s in blocks of length Grows
-    c[1, (J+1)..(J+Grows)]         = J(1, Grows, 1)
-    c[1, (J+Grows+1)..(J+2*Grows)] = J(1, Grows, 1)
+    // objective: minimize the sum of the 2*Grows slack variables
+    c = (J(1, J, 0), J(1, 2*Grows, 1))
 
-    // ecmat is (Grows+1)×(J + 2*Grows)
-    ecmat = J(Grows+1, total_vars, 0)
-    bec   = J(Grows+1, 1, 0)
-
-    // sum of weights = 1  => top row
-    ecmat[1, 1..J] = J(1, J, 1)
-    bec[1,1]       = 1
-
-    // Build constraints for each grid point
-    for (g2=1; g2<=Grows; g2++) {
-        // ecmat[(1+g2), 1..J] gets the control cdf values for that row
-        ecmat[(1+g2), 1..J] = control_cdf[g2, .]
-
-        // Single cells: assign as a 1×1 sub-slice
-        ecmat[(1+g2), (J+g2)..(J+g2)]             = J(1,1,-1)
-        ecmat[(1+g2), (J+Grows+g2)..(J+Grows+g2)] = J(1,1, 1)
-
-        // Right-hand side
-        bec[(1+g2),1] = target_cdf[g2]
-    }
+    // equality constraints: sum of weights = 1 (top row), then for each grid
+    // point sum_j w_j F_j(y_g) - s+_g + s-_g = F_target(y_g)
+    ecmat = (J(1, J, 1), J(1, 2*Grows, 0)) \ (control_cdf, -I(Grows), I(Grows))
+    bec   = 1 \ tcdf
 
     // Bounds
     lowerbd = J(1, total_vars, .)
@@ -234,11 +285,10 @@ real vector disco_mixture_weights(real matrix control_cdf, real vector target_cd
 
     // If simplex=1, force weights >= 0
     if (simplex == 1) {
-        lowerbd[1, 1..J] = J(1, J, 0)
+        lowerbd[|1, 1 \ 1, J|] = J(1, J, 0)
     }
     // Slacks must be >= 0
-    lowerbd[1, (J+1)..(J+Grows)]         = J(1, Grows, 0)
-    lowerbd[1, (J+Grows+1)..(J+2*Grows)] = J(1, Grows, 0)
+    lowerbd[|1, J+1 \ 1, total_vars|] = J(1, 2*Grows, 0)
 
     // Solve linear program
     q = LinearProgram()
@@ -262,170 +312,104 @@ real vector disco_mixture_weights(real matrix control_cdf, real vector target_cd
 
     return(w)
 }
+
 // -----------------------------------------------------------------------------
-// Main DISCO function with both M & G
-struct disco_out disco_full_run(real vector y, real vector id, real vector tt,
-                              real scalar target_id, real scalar T0, real scalar T_max, 
-                              real scalar M, real scalar G,
-                              real scalar q_min, real scalar q_max,
-                              real scalar simplex, real scalar mixture) 
+// Run the DiSCo estimator from the precomputed stores, treating column tc as
+// the target and the remaining columns as controls. Pre-treatment periods use
+// their own weights and post-treatment periods the averaged weights, exactly
+// like the original two-loop implementation.
+struct disco_out scalar disco_run_from_store(real matrix QG, real matrix CG,
+    real matrix WM, real scalar tc, real scalar T0, real scalar T_max,
+    real scalar M, real scalar G, real vector gridG,
+    real scalar simplex, real scalar mixture)
 {
+    struct disco_out scalar r
+    real scalar nu, Jn, t8, m8, p8, gg8
+    real vector idx, w, W_avg, Tq, Tc, Q_synth, C_synth, wfinal
+    real matrix weights_store, period_weights, WMt, CqG, CcG
+    real matrix quantile_diff, cdf_diff, Q_synth_all, C_synth_all
+    real matrix Q_target_all, C_target_all
+
+    nu  = cols(QG)
+    Jn  = nu - 1
+    idx = select((1::nu), (1::nu):!=tc)
+
     //-------------------------------------------------------
-    // 0. Setup
+    // 1. Weights for each pre-treatment period
     //-------------------------------------------------------
-    real scalar J_sc, amin, amax, t_loop, ci2_loop, T0_minus_1, t2_loop, t_loop2
-    real vector uid, cids, yt, idt, target_data, cd, w, w_temp, W_avg
-    real vector gridG, gridM
-    real matrix weights_store, period_weights
-    real matrix storeCqM, storeCcM, storeCqG, storeCcG
-    real matrix Q_target_all, C_target_all, Q_synth_all, C_synth_all
-    real matrix quantile_diff, cdf_diff
-    real matrix CqM, CcM, CqG, CcG
-    real vector TqM, TcM, TqG, TcG
-    real vector Tq, Tc, wfinal, Q_synth, C_synth, Q_synth_sorted
+    weights_store  = J(max((T0-1,0)), Jn, .)
+    period_weights = J(T_max, Jn, .)
 
-    uid  = get_unique(id)
-    cids = select(uid, uid:!=target_id)
-    J_sc = length(cids)
+    for (t8=1; t8<=T0-1; t8++) {
+        WMt = WM[|(t8-1)*M+1, 1 \ t8*M, nu|]
+        if (mixture==0) {
+            w = disco_solve_weights(WMt[., idx], WMt[., tc], simplex)
+        }
+        else {
+            w = disco_mixture_weights(WMt[., idx], WMt[., tc], simplex)'
+        }
+        weights_store[t8, .]  = w
+        period_weights[t8, .] = w
+    }
 
-    amin = min(y)
-    amax = max(y)
-	
-	st_numscalar("amin", amin)
-    st_numscalar("amax", amax)
+    //-------------------------------------------------------
+    // 2. Average weights for the post period
+    //-------------------------------------------------------
+    if (T0-1 < 1) {
+        W_avg = J(Jn,1,1/Jn)
+    }
+    else {
+        W_avg = (colsum(weights_store) / (T0-1))'
+    }
 
-    gridG = range(amin, amax, (amax - amin)/(G-1))'
-    gridM = range(amin, amax, (amax - amin)/(M-1))'
+    for (t8=T0; t8<=T_max; t8++) {
+        period_weights[t8, .] = W_avg'
+    }
 
+    //-------------------------------------------------------
+    // 3. Build final synthetic distributions per period
+    //-------------------------------------------------------
     quantile_diff = J(G, T_max, .)
     cdf_diff      = J(G, T_max, .)
-    weights_store = J(T0-1, J_sc, .)
-    period_weights= J(T_max, J_sc, .)
     Q_target_all  = J(G, T_max, .)
     C_target_all  = J(G, T_max, .)
     Q_synth_all   = J(G, T_max, .)
     C_synth_all   = J(G, T_max, .)
 
-    storeCqG = J(G*T_max, J_sc, .)
-    storeCcG = J(G*T_max, J_sc, .)
-    storeCqM = J(M*T_max, J_sc, .)
-    storeCcM = J(M*T_max, J_sc, .)
+    for (t8=1; t8<=T_max; t8++) {
+        Tq  = QG[|(t8-1)*G+1, tc \ t8*G, tc|]
+        Tc  = CG[|(t8-1)*G+1, tc \ t8*G, tc|]
+        CqG = QG[|(t8-1)*G+1, 1 \ t8*G, nu|][., idx]
+        CcG = CG[|(t8-1)*G+1, 1 \ t8*G, nu|][., idx]
 
-    //-------------------------------------------------------
-    // 1. Loop over all T=1..T_max to build and store
-    //-------------------------------------------------------
-    for (t_loop=1; t_loop<=T_max; t_loop++) {
-
-        yt          = select(y,  tt:==t_loop)
-        idt         = select(id, tt:==t_loop)
-        target_data = select(yt, idt:==target_id)
-
-        TqM = disco_quantile(target_data, M, q_min, q_max)
-        TcM = cdf_builder(target_data, gridM)
-
-        TqG = disco_quantile(target_data, G, q_min, q_max)
-        TcG = cdf_builder(target_data, gridG)
-
-        Q_target_all[, t_loop] = TqG
-        C_target_all[, t_loop] = TcG
-
-        CqM = J(M, J_sc, .)
-        CcM = J(M, J_sc, .)
-        CqG = J(G, J_sc, .)
-        CcG = J(G, J_sc, .)
-
-        for (ci2_loop=1; ci2_loop<=J_sc; ci2_loop++) {
-            cd              = select(yt, idt:==cids[ci2_loop])
-            CqM[, ci2_loop] = disco_quantile(cd, M, q_min, q_max)
-            CcM[, ci2_loop] = cdf_builder(cd, gridM)
-            CqG[, ci2_loop] = disco_quantile(cd, G, q_min, q_max)
-            CcG[, ci2_loop] = cdf_builder(cd, gridG)
-        }
-
-        storeCqM[(t_loop-1)*M+1 .. t_loop*M,  ] = CqM
-        storeCcM[(t_loop-1)*M+1 .. t_loop*M,  ] = CcM
-        storeCqG[(t_loop-1)*G+1 .. t_loop*G,  ] = CqG
-        storeCcG[(t_loop-1)*G+1 .. t_loop*G,  ] = CcG
-
-        if (t_loop <= T0-1) {
-            if (mixture==0) {
-                w = disco_solve_weights(CqM, TqM, simplex)
-            } 
-            else {
-                w_temp = disco_mixture_weights(CcM, TcM, simplex)
-                w      = w_temp'
-            }
-            weights_store[t_loop, .]  = w
-            period_weights[t_loop, .] = w
-        }
-        else {
-            period_weights[t_loop, .] = J(J_sc,1,.)'
-        }
-    }
-
-    //-------------------------------------------------------
-    // 2. Compute average weights for post period
-    //-------------------------------------------------------
-    T0_minus_1 = T0 - 1
-    if (T0_minus_1<1) {
-        W_avg = J(J_sc,1,1/J_sc)
-    }
-    else {
-        W_avg = (colsum(weights_store) / T0_minus_1)'
-    }
-
-    for (t2_loop=T0; t2_loop<=T_max; t2_loop++) {
-        period_weights[t2_loop, .] = W_avg'
-    }
-
-    //-------------------------------------------------------
-    // 3. Second loop to build final synthetic distribution
-    //-------------------------------------------------------
-    for (t_loop2=1; t_loop2<=T_max; t_loop2++) {
-
-        Tq = Q_target_all[, t_loop2]
-        Tc = C_target_all[, t_loop2]
-
-        CqG = storeCqG[(t_loop2-1)*G+1 .. t_loop2*G,  ]
-        CcG = storeCcG[(t_loop2-1)*G+1 .. t_loop2*G,  ]
-
-        wfinal = period_weights[t_loop2, .]'
+        wfinal = period_weights[t8, .]'
 
         if (mixture == 0) {
-            Q_synth        = CqG * wfinal
-            Q_synth_sorted = sort(Q_synth, 1)
-            C_synth        = J(G,1,0)
-
-            real scalar gg2_loop, pos
-            for (gg2_loop=1; gg2_loop<=G; gg2_loop++) {
-                pos               = sum(Q_synth_sorted :<= gridG[gg2_loop])
-                C_synth[gg2_loop]= pos / G
-            }
-        } 
+            Q_synth = CqG * wfinal
+            // empirical CDF of the G synthetic quantiles = counts/G
+            C_synth = disco_cdf_sorted(sort(Q_synth,1), gridG)
+        }
         else {
             C_synth = CcG * wfinal
             Q_synth = J(G,1,.)
-            real scalar m2_loop, p, gg3
-            for (m2_loop=1; m2_loop<=G; m2_loop++) {
-                p    = (m2_loop-1)/(G-1)
-                gg3  = 1
-                while (gg3 < length(C_synth)  &  C_synth[gg3] < p) gg3++
-                if (gg3>G) gg3 = G
-                Q_synth[m2_loop] = gridG[gg3]
+            for (m8=1; m8<=G; m8++) {
+                p8  = (m8-1)/(G-1)
+                gg8 = 1
+                while (gg8 < length(C_synth) & C_synth[gg8] < p8) gg8++
+                if (gg8>G) gg8 = G
+                Q_synth[m8] = gridG[gg8]
             }
         }
 
-        Q_synth_all[, t_loop2] = Q_synth
-        C_synth_all[, t_loop2] = C_synth
+        Q_target_all[, t8] = Tq
+        C_target_all[, t8] = Tc
+        Q_synth_all[, t8]  = Q_synth
+        C_synth_all[, t8]  = C_synth
 
-        quantile_diff[, t_loop2] = Tq - Q_synth
-        cdf_diff[, t_loop2]      = Tc - C_synth
+        quantile_diff[, t8] = Tq - Q_synth
+        cdf_diff[, t8]      = Tc - C_synth
     }
 
-    //-------------------------------------------------------
-    // 4. Return results
-    //-------------------------------------------------------
-    struct disco_out scalar r
     r.weights         = W_avg
     r.quantile_diff   = quantile_diff
     r.cdf_diff        = cdf_diff
@@ -433,22 +417,56 @@ struct disco_out disco_full_run(real vector y, real vector id, real vector tt,
     r.cdf_synth       = C_synth_all
     r.quantile_t      = Q_target_all
     r.cdf_t           = C_target_all
-    r.cids            = cids
+    r.cids            = J(0,0,.)
     return(r)
 }
 
 // -----------------------------------------------------------------------------
-// Compute ratio, updated to pass M (and G) into disco_full_run
-real scalar disco_compute_ratio(real vector y, real vector id, real vector tt, 
-                              real scalar target_id, real scalar T0, real scalar T_max, 
+// Main DISCO function with both M & G
+struct disco_out disco_full_run(real vector y, real vector id, real vector tt,
+                              real scalar target_id, real scalar T0, real scalar T_max,
                               real scalar M, real scalar G,
-                              real scalar q_min, real scalar q_max, 
-                              real scalar simplex, real scalar mixture) 
+                              real scalar q_min, real scalar q_max,
+                              real scalar simplex, real scalar mixture)
 {
-    real scalar pre_dist, pre_count, post_dist, post_count, dist_t, ratio, t_loop
-    struct disco_out scalar rr
+    struct disco_out scalar r
+    real scalar amin, amax
+    real vector uid, cids, gridG, gridM
+    real matrix QG, CG, WM
+    pointer(real colvector) matrix P
 
-    rr = disco_full_run(y, id, tt, target_id, T0, T_max, M, G, q_min, q_max, simplex, mixture)
+    uid  = get_unique(id)
+    cids = select(uid, uid:!=target_id)
+
+    amin = min(y)
+    amax = max(y)
+
+    st_numscalar("amin", amin)
+    st_numscalar("amax", amax)
+
+    gridG = range(amin, amax, (amax - amin)/(G-1))
+    gridM = range(amin, amax, (amax - amin)/(M-1))
+
+    P = disco_build_cells(y, id, tt, target_id, T_max, cids)
+
+    QG = .
+    CG = .
+    WM = .
+    disco_precompute(P, T0, T_max, M, G, q_min, q_max, mixture, gridG, gridM,
+                     QG, CG, WM)
+
+    r = disco_run_from_store(QG, CG, WM, 1, T0, T_max, M, G, gridG,
+                             simplex, mixture)
+    r.cids = cids
+    return(r)
+}
+
+// -----------------------------------------------------------------------------
+// Pre/post RMSE ratio of the quantile treatment effects
+real scalar disco_ratio_from_diff(real matrix quantile_diff,
+                                  real scalar T0, real scalar T_max)
+{
+    real scalar pre_dist, pre_count, post_dist, post_count, dist_t, t_loop
 
     pre_dist   = 0
     pre_count  = 0
@@ -456,11 +474,11 @@ real scalar disco_compute_ratio(real vector y, real vector id, real vector tt,
     post_count = 0
 
     for (t_loop=1; t_loop<=T_max; t_loop++) {
-        dist_t = mean((rr.quantile_diff[,t_loop]:^2))
+        dist_t = mean((quantile_diff[,t_loop]:^2))
         if (t_loop<T0) {
             pre_dist   = pre_dist + dist_t
             pre_count  = pre_count + 1
-        } 
+        }
         else {
             post_dist  = post_dist + dist_t
             post_count = post_count + 1
@@ -469,271 +487,97 @@ real scalar disco_compute_ratio(real vector y, real vector id, real vector tt,
 
     if (pre_count==0 | post_count==0) return(.)
 
-    ratio = sqrt((post_dist/post_count))/sqrt((pre_dist/pre_count))
-    return(ratio)
+    return(sqrt((post_dist/post_count))/sqrt((pre_dist/pre_count)))
 }
 
 // -----------------------------------------------------------------------------
-// Permutation test, also referencing M & G
-real scalar disco_permutation_test(real vector y, real vector id, real vector tt,
-                                 real scalar target_id, real scalar T0, real scalar T_max, 
-                                 real scalar M, real scalar G,
-                                 real scalar q_min, real scalar q_max, 
-                                 real scalar simplex, real scalar mixture) 
+// Compute ratio, updated to pass M (and G) into disco_full_run
+real scalar disco_compute_ratio(real vector y, real vector id, real vector tt,
+                              real scalar target_id, real scalar T0, real scalar T_max,
+                              real scalar M, real scalar G,
+                              real scalar q_min, real scalar q_max,
+                              real scalar simplex, real scalar mixture)
 {
-    real scalar actual_ratio, pval, rj, J, count, j_loop
-    real vector uid, cids
+    struct disco_out scalar rr
 
-    actual_ratio = disco_compute_ratio(y, id, tt, target_id, T0, T_max, M, G, 
-                                       q_min, q_max, simplex, mixture)
+    rr = disco_full_run(y, id, tt, target_id, T0, T_max, M, G, q_min, q_max, simplex, mixture)
+    return(disco_ratio_from_diff(rr.quantile_diff, T0, T_max))
+}
+
+// -----------------------------------------------------------------------------
+// Permutation test. The per-unit quantile/CDF stores are computed once and
+// reused for every placebo run: only the weight solves and the synthetic
+// distributions are redone with each unit treated as the target in turn.
+real scalar disco_permutation_test(real vector y, real vector id, real vector tt,
+                                 real scalar target_id, real scalar T0, real scalar T_max,
+                                 real scalar M, real scalar G,
+                                 real scalar q_min, real scalar q_max,
+                                 real scalar simplex, real scalar mixture)
+{
+    struct disco_out scalar rr
+    real scalar amin, amax, actual_ratio, rj, J, count, j_loop
+    real vector uid, cids, gridG, gridM
+    real matrix QG, CG, WM
+    pointer(real colvector) matrix P
 
     uid  = get_unique(id)
     cids = select(uid, uid:!=target_id)
     J    = length(cids)
-    count= 0
 
+    amin = min(y)
+    amax = max(y)
+    gridG = range(amin, amax, (amax - amin)/(G-1))
+    gridM = range(amin, amax, (amax - amin)/(M-1))
+
+    P = disco_build_cells(y, id, tt, target_id, T_max, cids)
+
+    QG = .
+    CG = .
+    WM = .
+    disco_precompute(P, T0, T_max, M, G, q_min, q_max, mixture, gridG, gridM,
+                     QG, CG, WM)
+
+    rr = disco_run_from_store(QG, CG, WM, 1, T0, T_max, M, G, gridG,
+                              simplex, mixture)
+    actual_ratio = disco_ratio_from_diff(rr.quantile_diff, T0, T_max)
+
+    count = 0
     for (j_loop=1; j_loop<=J; j_loop++) {
-        rj = disco_compute_ratio(y, id, tt, cids[j_loop], T0, T_max, M, G,
-                                 q_min, q_max, simplex, mixture)
+        rr = disco_run_from_store(QG, CG, WM, 1+j_loop, T0, T_max, M, G, gridG,
+                                  simplex, mixture)
+        rj = disco_ratio_from_diff(rr.quantile_diff, T0, T_max)
         if (rj>=actual_ratio) count = count + 1
     }
 
-    pval = (count+1)/(J+1)
-    return(pval)
+    return((count+1)/(J+1))
 }
-
-//----------------------------------------------------------
-// disco_CI_iter uses M-based for weight estimation, G-based
-// for final. Both are resampled for period t, including post.
-//----------------------------------------------------------
-struct iter_out disco_CI_iter(
-    real vector y,
-    real vector id,
-    real vector tt,
-    real scalar target_id,
-    real scalar t,
-    real scalar T0,
-    real scalar M,
-    real scalar G,
-    real vector gridM,   // M-point grid for weighting
-    real vector gridG,   // G-point grid for final
-    real scalar q_min,
-    real scalar q_max,
-    real scalar simplex,
-    real scalar mixture
-)
-{
-    //----------------------------------------------------------
-    // Declarations
-    //----------------------------------------------------------
-    struct iter_out scalar out
-    real vector yt, idt, target_data, indices_t, mytar, target_qM, target_cdfM
-    real vector uid, cids, cd, indices_c, mycon
-    real matrix mycon_qM, mycon_cdfM, mycon_qG, mycon_cdfG, weights_mix
-    real scalar t_len, c_len, J, ci2
-
-    //----------------------------------------------------------
-    // 1. Subset data for period t, resample target
-    //----------------------------------------------------------
-    yt  = select(y,  tt:==t)
-    idt = select(id, tt:==t)
-    target_data = select(yt, idt:==target_id)
-    t_len       = length(target_data)
-
-    // Draw with replacement for target
-    indices_t = ceil(runiform(t_len,1):*t_len)
-    mytar     = target_data[indices_t]
-
-    // Build M-based (weighting) & G-based (final) for target
-    target_qM   = disco_quantile(mytar, M, q_min, q_max)
-    target_cdfM = cdf_builder(mytar, gridM)
-
-    out.target_qG   = disco_quantile(mytar, G, q_min, q_max)
-    out.target_cdfG = cdf_builder(mytar, gridG)
-
-    //----------------------------------------------------------
-    // 2. Resample each control, build M- and G-based
-    //----------------------------------------------------------
-    uid  = get_unique(idt)
-    cids = select(uid, uid:!=target_id)
-    J    = length(cids)
-
-    mycon_qM   = J(M, J, .)
-    mycon_cdfM = J(M, J, .)
-    mycon_qG   = J(G, J, .)
-    mycon_cdfG = J(G, J, .)
-
-    for (ci2=1; ci2<=J; ci2++) {
-        cd    = select(yt, idt:==cids[ci2])
-        c_len = length(cd)
-        indices_c = ceil(runiform(c_len,1):*c_len)
-        mycon     = cd[indices_c]
-
-        // M-based
-        mycon_qM[, ci2]   = disco_quantile(mycon, M, q_min, q_max)
-        mycon_cdfM[, ci2] = cdf_builder(mycon, gridM)
-        // G-based
-        mycon_qG[, ci2]   = disco_quantile(mycon, G, q_min, q_max)
-        mycon_cdfG[, ci2] = cdf_builder(mycon, gridG)
-    }
-
-	out.controls_qM   = mycon_qM
-    out.controls_cdfM = mycon_cdfM
-    out.controls_qG   = mycon_qG
-    out.controls_cdfG = mycon_cdfG
-
-    //----------------------------------------------------------
-    // 3. If pre-treatment, solve for weights using M-based
-    //----------------------------------------------------------
-    out.weights = J(J,1,.)
-
-    if (t <= T0-1) {
-        if (mixture == 0) {
-            // quantile-based weighting
-            out.weights = disco_solve_weights(mycon_qM, target_qM, simplex)
-        } else {
-            // mixture-based weighting
-            weights_mix = disco_mixture_weights(mycon_cdfM, target_cdfM, simplex)
-			out.weights = weights_mix'
-        }
-    }
-
-    return(out)
-}
-
-
-//--------------------------------------------------------------
-// bootCounterfactuals
-//  * Uses M-based weights from pre-treatment
-//  * Applies them to G-based quantiles/CDF for final
-//  * Returns differences etc.
-//--------------------------------------------------------------
-struct boot_out bootCounterfactuals(
-    struct iter_out vector iter_results,
-    real scalar T0, 
-    real scalar T_max, 
-    real scalar M,
-    real scalar G,
-    real vector gridG,
-    real scalar mixture
-)
-{
-    //---------------------------------------------------------
-    // Declarations
-    //---------------------------------------------------------
-    struct boot_out scalar bo
-    real scalar t_loop, t_loop2, J
-    real matrix quantile_diff, cdf_diff, quantile_synth, cdf_synth, quantile_t, cdf_t
-    real matrix weights_all
-    real vector W_avg, tqG, tcG, Q_synth, C_synth, Q_synth_sorted
-    real matrix cqG, ccG
-
-    //---------------------------------------------------------
-    // 1. Gather dimension, allocate
-    //---------------------------------------------------------
-    // This code expects each iter_results[t].controls_qM is MxJ, controls_qG is GxJ
-    J = cols(iter_results[1].controls_qM)
-	
-
-
-    quantile_diff  = J(G, T_max, .)
-    cdf_diff       = J(G, T_max, .)
-    quantile_synth = J(G, T_max, .)
-    cdf_synth      = J(G, T_max, .)
-    quantile_t     = J(G, T_max, .)
-    cdf_t          = J(G, T_max, .)
-
-    //---------------------------------------------------------
-    // 2. Average pre-treatment weights
-    //---------------------------------------------------------
-    weights_all = J(T0-1, J, .)
-    for (t_loop=1; t_loop<=T0-1; t_loop++) {
-        weights_all[t_loop,.] = iter_results[t_loop].weights
-    }
-
-    if (T0-1>0) {
-        W_avg = (colsum(weights_all)/(T0-1))'
-    } else {
-        // corner case T0=1 => fallback uniform
-        W_avg = J(J,1,1/J)
-    }
-
-    //---------------------------------------------------------
-    // 3. For each period, build final synthetic distribution
-    //---------------------------------------------------------
-    for (t_loop2=1; t_loop2<=T_max; t_loop2++) {
-        tqG = iter_results[t_loop2].target_qG
-        tcG = iter_results[t_loop2].target_cdfG
-        cqG = iter_results[t_loop2].controls_qG
-        ccG = iter_results[t_loop2].controls_cdfG
-
-        quantile_t[, t_loop2] = tqG
-        cdf_t[, t_loop2]      = tcG
-
-        if (mixture==0) {
-            Q_synth        = cqG*W_avg
-            Q_synth_sorted = sort(Q_synth,1)
-            C_synth        = J(G,1,0)
-            real scalar gg_loop
-            for (gg_loop=1; gg_loop<=G; gg_loop++) {
-                C_synth[gg_loop] = sum(Q_synth_sorted:<=gridG[gg_loop]) / G
-            }
-        } 
-        else {
-            C_synth = ccG*W_avg
-            Q_synth = J(G,1,.)
-            real scalar m2_loop, p, gg3
-            for (m2_loop=1; m2_loop<=G; m2_loop++) {
-                p   = (m2_loop-1)/(G-1)
-                gg3 = 1
-                while (gg3<length(C_synth) & C_synth[gg3]<p) gg3++
-                if (gg3>G) gg3=G
-                Q_synth[m2_loop] = gridG[gg3]
-
-            }
-        }
-
-        quantile_synth[, t_loop2] = Q_synth
-        cdf_synth[, t_loop2]      = C_synth
-
-        // Differences
-        quantile_diff[, t_loop2] = tqG :- Q_synth
-        cdf_diff[, t_loop2]      = tcG :- C_synth
-    }
-
-    bo.quantile_diff   = quantile_diff
-    bo.cdf_diff        = cdf_diff
-    bo.quantile_synth  = quantile_synth
-    bo.cdf_synth       = cdf_synth
-    bo.quantile_t      = quantile_t
-    bo.cdf_t           = cdf_t
-    return(bo)
-}
-
 
 //--------------------------------------------------------------
 // disco_bootstrap_CI
-//  * Calls disco_CI_iter for each t=1..T_max, using M & G
-//  * Calls bootCounterfactuals with M & G
+//  * Resamples each (period, unit) cell, re-estimates the weights on the
+//    resampled pre-treatment data, and rebuilds the synthetic distributions
+//  * Data cells are pre-split and pre-sorted once; resamples are drawn
+//    already sorted; only the M-grid objects needed for the weight step of
+//    the requested mode are computed
 //  * Builds pointwise or uniform intervals for both quantile & cdf
 //--------------------------------------------------------------
 struct CI_out scalar disco_bootstrap_CI(
     real vector y,
     real vector id,
     real vector tt,
-    real scalar target_id, 
-    real scalar T0, 
-    real scalar T_max, 
+    real scalar target_id,
+    real scalar T0,
+    real scalar T_max,
     real scalar M,
     real scalar G,
-    real scalar q_min, 
-    real scalar q_max, 
-    real scalar simplex, 
-    real scalar mixture, 
-    real scalar boots, 
-    real scalar cl, 
+    real scalar q_min,
+    real scalar q_max,
+    real scalar simplex,
+    real scalar mixture,
+    real scalar boots,
+    real scalar cl,
     real scalar uniform,
-    real matrix quantile_diff,  
+    real matrix quantile_diff,
     real matrix cdf_diff
 )
 {
@@ -741,83 +585,134 @@ struct CI_out scalar disco_bootstrap_CI(
     // Declarations
     //----------------------------------------------------------
     struct CI_out scalar co
-    struct boot_out scalar bo
-    struct iter_out vector iter_results
 
-    real scalar amin, amax
-    real scalar b_loop, t_loop
-    real scalar t_loop2, idx_loop3
+    real scalar amin, amax, Jn, nu
+    real scalar b_loop, t_loop, j_loop, m8, p8, gg8
+    real scalar t_loop2, idx_loop3, idx_loop4
     real scalar alpha, lower_idx, upper_idx
     real scalar t_loop3, index_q, m_i2, c_i2
     real scalar alpha_q, cval_q, base_val2, cval_c, base_val_c
 
+    real vector uid, cids, gridG, gridM, pG, pM, vals, tmp
+    real vector bs, target_w, w, W_avg, Q_synth, C_synth
     real matrix quantile_diff_boot, cdf_diff_boot
-    real matrix quantile_synth_boot, cdf_synth_boot
-    real matrix quantile_t_boot, cdf_t_boot
     real matrix qdiff_lower, qdiff_upper, cdiff_lower, cdiff_upper
     real matrix qdiff_mat, qdiff_err, sorted_diffs_q
     real matrix cdf_mat, cdf_err, sorted_diffs_c
     real vector qmax_abs, cmax_abs
-    real vector gridG, gridM, vals, tmp
+    real matrix tQG, tCG, cQG, cCG, Wmat, weights_all
+    pointer(real colvector) matrix P
 
     //----------------------------------------------------------
-    // 1. Build grids
+    // 1. Build grids and pre-split the data into sorted cells
     //----------------------------------------------------------
     amin = min(y)
     amax = max(y)
 
     // final G-based grid for the final distribution
     if (G>1 & amax>amin) {
-        gridG = range(amin, amax, (amax - amin)/(G-1))'
+        gridG = range(amin, amax, (amax - amin)/(G-1))
     } else {
         gridG = J(G,1,amin)
     }
 
     // M-based grid for weighting
     if (M>1 & amax>amin) {
-        gridM = range(amin, amax, (amax - amin)/(M-1))'
+        gridM = range(amin, amax, (amax - amin)/(M-1))
     } else {
         // corner case
         gridM = J(M,1,amin)
     }
 
+    pG = disco_prob_grid(G, q_min, q_max)
+    pM = disco_prob_grid(M, q_min, q_max)
+
+    uid  = get_unique(id)
+    cids = select(uid, uid:!=target_id)
+    Jn   = length(cids)
+    nu   = Jn + 1
+
+    P = disco_build_cells(y, id, tt, target_id, T_max, cids)
+
     //----------------------------------------------------------
-    // 2. Storage for bootstrap draws
+    // 2. Storage for bootstrap draws and per-replication work
     //----------------------------------------------------------
-    quantile_diff_boot  = J(G*T_max, boots, .)
-    cdf_diff_boot       = J(G*T_max, boots, .)
-    quantile_synth_boot = J(G*T_max, boots, .)
-    cdf_synth_boot      = J(G*T_max, boots, .)
-    quantile_t_boot     = J(G*T_max, boots, .)
-    cdf_t_boot          = J(G*T_max, boots, .)
+    quantile_diff_boot = J(G*T_max, boots, .)
+    cdf_diff_boot      = J(G*T_max, boots, .)
+
+    tQG         = J(G, T_max, .)
+    tCG         = J(G, T_max, .)
+    cQG         = J(G*T_max, Jn, .)
+    cCG         = J(G*T_max, Jn, .)
+    Wmat        = J(M, Jn, .)
+    weights_all = J(max((T0-1,0)), Jn, .)
+    target_w    = J(M, 1, .)
 
     //----------------------------------------------------------
     // 3. Main bootstrap loop
     //----------------------------------------------------------
     for (b_loop=1; b_loop<=boots; b_loop++) {
-        iter_results = iter_out(T_max)
 
-        // For each period, do M-based re-sample for weighting, G-based for final
+        // resample every cell and rebuild quantiles/CDFs
         for (t_loop=1; t_loop<=T_max; t_loop++) {
-            struct iter_out scalar out
-            out = disco_CI_iter(
-                y, id, tt, target_id, t_loop, T0,
-                M, G,   // pass both
-                gridM, gridG,
-                q_min, q_max, simplex, mixture
-            )
-            iter_results[t_loop] = out
+            bs = disco_boot_sorted(*(P[t_loop,1]))
+            tQG[, t_loop] = disco_quantile_sorted(bs, pG)
+            tCG[, t_loop] = disco_cdf_sorted(bs, gridG)
+            if (t_loop<=T0-1) {
+                target_w = (mixture==1 ? disco_cdf_sorted(bs, gridM) :
+                                         disco_quantile_sorted(bs, pM))
+            }
+
+            for (j_loop=1; j_loop<=Jn; j_loop++) {
+                bs = disco_boot_sorted(*(P[t_loop,1+j_loop]))
+                cQG[|(t_loop-1)*G+1, j_loop \ t_loop*G, j_loop|] = disco_quantile_sorted(bs, pG)
+                cCG[|(t_loop-1)*G+1, j_loop \ t_loop*G, j_loop|] = disco_cdf_sorted(bs, gridG)
+                if (t_loop<=T0-1) {
+                    Wmat[, j_loop] = (mixture==1 ? disco_cdf_sorted(bs, gridM) :
+                                                   disco_quantile_sorted(bs, pM))
+                }
+            }
+
+            // weights from the resampled pre-treatment data
+            if (t_loop<=T0-1) {
+                if (mixture==0) {
+                    weights_all[t_loop, .] = disco_solve_weights(Wmat, target_w, simplex)
+                }
+                else {
+                    weights_all[t_loop, .] = disco_mixture_weights(Wmat, target_w, simplex)'
+                }
+            }
         }
 
-        // build final distribution
-        bo = bootCounterfactuals(iter_results, T0, T_max, M, G, gridG, mixture)
+        // average pre-treatment weights
+        if (T0-1>0) {
+            W_avg = (colsum(weights_all)/(T0-1))'
+        } else {
+            // corner case T0=1 => fallback uniform
+            W_avg = J(Jn,1,1/Jn)
+        }
 
-        quantile_diff_boot[, b_loop]  = vec(bo.quantile_diff)
-        cdf_diff_boot[, b_loop]       = vec(bo.cdf_diff)
-        quantile_synth_boot[, b_loop] = vec(bo.quantile_synth)
-        cdf_synth_boot[, b_loop]      = vec(bo.cdf_synth)
-        quantile_t_boot[, b_loop]     = vec(bo.quantile_t)
-        cdf_t_boot[, b_loop]          = vec(bo.cdf_t)
+        // final synthetic distribution per period
+        for (t_loop=1; t_loop<=T_max; t_loop++) {
+            if (mixture==0) {
+                Q_synth = cQG[|(t_loop-1)*G+1, 1 \ t_loop*G, Jn|] * W_avg
+                C_synth = disco_cdf_sorted(sort(Q_synth,1), gridG)
+            }
+            else {
+                C_synth = cCG[|(t_loop-1)*G+1, 1 \ t_loop*G, Jn|] * W_avg
+                Q_synth = J(G,1,.)
+                for (m8=1; m8<=G; m8++) {
+                    p8  = (m8-1)/(G-1)
+                    gg8 = 1
+                    while (gg8<length(C_synth) & C_synth[gg8]<p8) gg8++
+                    if (gg8>G) gg8 = G
+                    Q_synth[m8] = gridG[gg8]
+                }
+            }
+
+            quantile_diff_boot[|(t_loop-1)*G+1, b_loop \ t_loop*G, b_loop|] = tQG[, t_loop] :- Q_synth
+            cdf_diff_boot[|(t_loop-1)*G+1, b_loop \ t_loop*G, b_loop|] = tCG[, t_loop] :- C_synth
+        }
     }
 
     //----------------------------------------------------------
@@ -833,7 +728,6 @@ struct CI_out scalar disco_bootstrap_CI(
     //----------------------------------------------------------
     if (uniform==0) {
         // Pointwise intervals
-        real scalar idx_loop4
         for (t_loop2=1; t_loop2<=T_max; t_loop2++) {
             // quantile
             for (idx_loop3=1; idx_loop3<=G; idx_loop3++) {
@@ -920,18 +814,18 @@ struct CI_out scalar disco_bootstrap_CI(
 
 
 // -----------------------------------------------------------------------------
-// Wrapper for main DISCO (kept same but with M & G as arguments).       
+// Wrapper for main DISCO (kept same but with M & G as arguments).
 // -----------------------------------------------------------------------------
 real scalar disco_wrapper(real vector y, id, tt,
-                         real scalar target_id, 
-                         real scalar T0, real scalar T_max, 
+                         real scalar target_id,
+                         real scalar T0, real scalar T_max,
                          real scalar M, real scalar G,
-                         real scalar q_min, real scalar q_max, 
-                         real scalar simplex, real scalar mixture) 
+                         real scalar q_min, real scalar q_max,
+                         real scalar simplex, real scalar mixture)
 {
     struct disco_out scalar results
 
-    results = disco_full_run(y, id, tt, target_id, T0, T_max, M, G, 
+    results = disco_full_run(y, id, tt, target_id, T0, T_max, M, G,
                              q_min, q_max, simplex, mixture)
 
     st_matrix("weights", results.weights')
@@ -950,19 +844,19 @@ real scalar disco_wrapper(real vector y, id, tt,
 // Wrapper for CI now passing M & G to disco_bootstrap_CI
 // -----------------------------------------------------------------------------
 real scalar disco_ci_wrapper(real vector y, id, tt,
-                           real scalar target_id, 
-                           real scalar T0, real scalar T_max, 
+                           real scalar target_id,
+                           real scalar T0, real scalar T_max,
                            real scalar M, real scalar G,
-                           real scalar q_min, real scalar q_max, 
-                           real scalar simplex, real scalar mixture, 
-                           real scalar boots, real scalar cl, real scalar uniform, 
+                           real scalar q_min, real scalar q_max,
+                           real scalar simplex, real scalar mixture,
+                           real scalar boots, real scalar cl, real scalar uniform,
                            real matrix quantile_diff, real matrix cdf_diff)
 {
     struct CI_out scalar results
 
-    results = disco_bootstrap_CI(y, id, tt, target_id, T0, T_max, M, G, 
+    results = disco_bootstrap_CI(y, id, tt, target_id, T0, T_max, M, G,
                                  q_min, q_max, simplex, mixture,
-                                 boots, cl, uniform, 
+                                 boots, cl, uniform,
                                  quantile_diff, cdf_diff)
 
     st_matrix("qdiff_lower", results.qdiff_lower)
@@ -973,9 +867,9 @@ real scalar disco_ci_wrapper(real vector y, id, tt,
     return(0)
 }
 // Compute summary stats
-real scalar compute_summary_stats(string scalar agg, real vector sample_points, 
+real scalar compute_summary_stats(string scalar agg, real vector sample_points,
                                 real scalar T0, real scalar T_max, real matrix quantile_diff,
-                                real matrix cdf_diff, real scalar CI, real scalar cl) 
+                                real matrix cdf_diff, real scalar CI, real scalar cl)
 {
     if (!anyof(("quantile", "cdf", "quantileDiff", "cdfDiff"), agg)) {
         errprintf("Invalid aggregation type\n")

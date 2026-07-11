@@ -27,44 +27,52 @@ Author 5 email:
 Help keywords: DiSCo, Stata, cdf, quantile, synthetic control, replication
 
 File list:
-- src: the disco Stata package. The do-files install it automatically with
+- src: the disco Stata package. The example do-files install it automatically with
   net install. It contains the command and help files (disco.ado, disco_estat.ado,
   disco_plot.ado, disco_weight.ado, quadprog.ado and their .sthlp files), the
   compiled Mata library (ldisco.mlib), the platform plugins
   (quadprog_mata_{mac,mac_intel,linux,win}), the Mata source (disco_utils.mata,
   quadprog.mata, build_disco_mlib.do), and the package index (disco.pkg, stata.toc).
-- code:
-    * code/cdf_simulations.do: generates the figures that illustrate the mixture
-      (CDF-based) approach. Self-contained; creates its own simulated data.
-    * code/rto_replication.do: replicates the tenure and title results, including the
-      disco_estat summary table and the figures, using the anonymized data in data/out.
-- data:
-    * data/out/tenure_anonymized.dta: anonymized, perturbed tenure data from
-      Van Dijcke, Gunsilius, and Wright (2024).
-    * data/out/titles_anonymized.dta: anonymized, perturbed title data from the same
-      paper.
-- results:
-    * results/cdf_simulations.log: Stata log produced by code/cdf_simulations.do.
-    * results/rto_replication.log: Stata log produced by code/rto_replication.do.
-    * results/figs/*.pdf: the figures that appear in the article (monochrome).
-    * results/paper/: the compiled article PDF.
+- examples: self-contained example do-files and the datasets they use. Each file
+  can be run out of the box from the examples/ directory and writes its log and
+  figures to the working directory.
+    * examples/tenure_example.do: replicates the tenure (quantile-based) results in
+      the article, including the disco_estat summary table and the figures. Starts
+      from "use tenure_anonymized.dta, clear".
+    * examples/titles_example.do: replicates the title (CDF-based, mixture) results.
+      Starts from "use titles_anonymized.dta, clear".
+    * examples/cdf_simulations.do: generates the figures that illustrate the mixture
+      (CDF-based) approach. Creates its own simulated data.
+    * examples/tenure_anonymized.dta, examples/titles_anonymized.dta: anonymized,
+      perturbed employment data from Van Dijcke, Gunsilius, and Wright (2026).
+- data_creation (not part of the SJ archive): for provenance only. The scripts
+  that construct the anonymized datasets from the confidential raw data. They
+  cannot be run without the confidential inputs, which are not distributed. They
+  are available in the public repository accompanying this package at
+  https://github.com/Davidvandijcke/disco_stata_journal.
+- results: the logs and figures produced by running the three example files, and
+  the compiled article (results/paper/).
 - readme.txt: this file.
 
 How to reproduce:
 1. Install Stata 18 or later.
-2. Open code/cdf_simulations.do and code/rto_replication.do and set the global
-   "root" at the top of each file to the directory where you unpacked this package.
-3. Run code/cdf_simulations.do, then code/rto_replication.do. Each file installs the
-   disco package from src/, writes its log to results/, and writes its figures to
-   results/figs/.
+2. Change to the examples/ directory of this package.
+3. Run, in any order:
+     do cdf_simulations.do
+     do tenure_example.do
+     do titles_example.do
+   Each file is self-contained: it installs the bundled disco package from ../src
+   (skip those lines if disco is already installed), loads its dataset from the
+   working directory, and writes its log and figures to the working directory.
+4. The results/ folder contains the logs and figures we obtained from these runs.
 
 Notes:
 The original employment records are confidential, so the data shipped here are a
 perturbed version: uniform noise is added to the outcomes, which preserves the shape
 of the distributions while keeping the dataset shareable. Estimated weights and point
-estimates match those in the article; bootstrap standard errors can differ slightly
-across Stata versions because the bootstrap draws depend on the random-number stream.
+estimates match those in the article; the bootstrap confidence intervals are
+reproducible via the seed() option used in the example files.
 
 References:
-Van Dijcke, David, Florian Gunsilius, and Austin Wright. 2024. "Return to Office and
-the Tenure Distribution." arXiv preprint arXiv:2405.04352.
+Van Dijcke, David, Florian Gunsilius, and Austin Wright. 2026. "Return to Office and
+the Tenure Distribution." Review of Economics & Statistics, conditionally accepted.

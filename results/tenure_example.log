@@ -1,0 +1,84 @@
+-------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
+> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/tenure_example.log
+  log type:  text
+ opened on:  11 Jul 2026, 15:20:16
+
+. 
+. * load and inspect the anonymized tenure data
+. use "tenure_anonymized.dta", clear
+
+. list in 1/5, ab(20)
+
+     +--------------------------------------------+
+     | time_col   id_col   company_name     y_col |
+     |--------------------------------------------|
+  1. |        2       17         oracle   1682.25 |
+  2. |        3        1       deloitte   375.783 |
+  3. |        2       72             3m   5276.48 |
+  4. |        3        2      microsoft    957.55 |
+  5. |        2        2      microsoft   2745.96 |
+     +--------------------------------------------+
+
+. 
+. * main disco command
+. disco y_col id_col time_col, idtarget(2) t0(3) agg("quantileDiff") ///
+>         seed(12143) g(10) m(100) ci boots(300)
+
+. 
+. * top 5 weights by company name
+. disco_weight id_col company_name, n(5)
+
+Top 5 weights:
+--------------------------------------------------
+
+  +----------------------------+
+  |              name | weight |
+  |-------------------+--------|
+  |            amazon |  .2203 |
+  |          autodesk |  .1271 |
+  |             cisco |  .1066 |
+  | dell technologies |  .0991 |
+  | slalom consulting |  .0962 |
+  +----------------------------+
+
+. 
+. * summary table of quantile effects
+. disco_estat summary
+
+Summary of quantile effects
+------------------------------------------------------------------------
+   Period  Range              Effect   Std. Err.   [95% Conf. Interval]
+------------------------------------------------------------------------
+        3  0.00-0.25          -6.659      24.256     -54.201     40.883
+        3  0.25-0.50         -21.443      24.256     -68.985     26.099
+        3  0.50-0.75         -50.509      24.256     -98.052     -2.967*
+        3  0.75-1.00         -54.751      24.256    -102.293     -7.209*
+------------------------------------------------------------------------
+* denotes significance at the 95% confidence level
+
+. 
+. * plot quantile effects
+. disco_plot, title(" ") ytitle("Difference in Tenure (Days)") hline(0) color1(
+> black) cicolor(gs12) scheme(sj)
+
+. graph export "tenure_quantileDiff.pdf", replace
+file tenure_quantileDiff.pdf saved as PDF format
+
+. 
+. * plot observed vs. synthetic quantile functions
+. disco_plot, title(" ") ytitle("Tenure (Days)") agg("quantile") ///
+>         yrange(0 3000) color1(black) color2(black) scheme(sj)
+
+. graph export "tenure_quantile.pdf", replace
+file tenure_quantile.pdf saved as PDF format
+
+. 
+. log close
+      name:  <unnamed>
+       log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
+> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/tenure_example.log
+  log type:  text
+ closed on:  11 Jul 2026, 15:20:29
+-------------------------------------------------------------------------------

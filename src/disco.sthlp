@@ -109,6 +109,8 @@ and sum to one. specifying {cmd:nosimplex} allows weights to take any values tha
 
 {phang}
 {opt mixture} use the mixture (cdf-based) approach instead of the quantile-based approach.
+The mixture weights are found by solving a linear program with 2*{opt m()}+J variables, which
+becomes slow for large {opt m()}; values up to around {cmd:m(100)} are recommended with this option.
 
 {phang}
 {opt permutation} perform a permutation test by treating each control unit as a "placebo" treated unit 

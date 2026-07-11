@@ -1,0 +1,86 @@
+-------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
+> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/titles_example.log
+  log type:  text
+ opened on:  11 Jul 2026, 15:20:29
+
+. 
+. * load and inspect the anonymized titles data
+. use "titles_anonymized.dta", clear
+
+. list in 1/5, ab(20)
+
+     +------------------------------------------+
+     | time_col   id_col   company_name   y_col |
+     |------------------------------------------|
+  1. |        3       17         oracle       8 |
+  2. |        2        1       deloitte       5 |
+  3. |        3        1       deloitte       5 |
+  4. |        1        1       deloitte       5 |
+  5. |        2      245         splunk       4 |
+     +------------------------------------------+
+
+. 
+. * main disco command: CDF-based (mixture) approach for the categorical outcom
+> e
+. disco y_col id_col time_col, idtarget(2) t0(3) agg("cdfDiff") seed(12143) ///
+>         mixture g(10) m(10) ci boots(300)
+Warning: Problem is infeasible.
+
+. 
+. * top 5 weights by company name
+. disco_weight id_col company_name, n(5)
+
+Top 5 weights:
+--------------------------------------------------
+
+  +----------------------------+
+  |              name | weight |
+  |-------------------+--------|
+  |         protiviti |  .3016 |
+  |            intuit |   .234 |
+  | dell technologies |  .1436 |
+  |          linkedin |  .1149 |
+  |            citrix |  .0602 |
+  +----------------------------+
+
+. 
+. * summary table of CDF effects
+. disco_estat summary
+
+Summary of CDF effects
+------------------------------------------------------------------------
+   Period  Range              Effect   Std. Err.   [95% Conf. Interval]
+------------------------------------------------------------------------
+        3  1.00-3.25           0.009       0.006      -0.002      0.020
+        3  3.25-5.50           0.006       0.006      -0.006      0.017
+        3  5.50-7.75           0.005       0.006      -0.006      0.016
+        3  7.75-10.00         -0.000       0.006      -0.011      0.011
+------------------------------------------------------------------------
+* denotes significance at the 95% confidence level
+
+. 
+. * plot CDF effects
+. disco_plot, title(" ") ytitle("Change in CDF") hline(0) categorical ///
+>         color1(gs10) cicolor(gs4) scheme(sj)
+
+. graph export "title_cdfDiff.pdf", replace
+file title_cdfDiff.pdf saved as PDF format
+
+. 
+. * plot synthetic vs. treated CDF
+. disco_plot, title(" ") ytitle("CDF") agg("cdf") color1(black) color2(black) s
+> cheme(sj)
+
+. graph export "title_cdf.pdf", replace
+file title_cdf.pdf saved as PDF format
+
+. 
+. log close
+      name:  <unnamed>
+       log:  /Users/davidvandijcke/University of Michigan Dropbox/David Van Dij
+> cke/Flo_GSRA/sj_replication_submission_16jan2024/examples/titles_example.log
+  log type:  text
+ closed on:  11 Jul 2026, 15:20:43
+-------------------------------------------------------------------------------

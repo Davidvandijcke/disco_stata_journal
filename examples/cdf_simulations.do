@@ -1,32 +1,38 @@
+* cdf_simulations.do
+* Self-contained simulation illustrating the mixture (CDF-based) option in
+* Gunsilius and Van Dijcke, "disco: Distributional Synthetic Controls".
+* Creates its own simulated data; no external data files needed.
+*
+* Run this file from the examples/ directory of the replication package:
+*   . cd examples
+*   . do cdf_simulations.do
+* The log and figures are written to the working directory.
+
 version 18.0
+clear all
+set more off
 
-* ---- EDIT this to your replication-package root directory ----
-global root "/Users/davidvandijcke/University of Michigan Dropbox/David Van Dijcke/Flo_GSRA/sj_replication_submission_16jan2024"
-global figs "${root}/results/figs"
-
-* Install the bundled disco package (ships in src/ of this replication package)
-global pkg "${root}/src"
-net install disco, from("${pkg}") replace
+* install the bundled disco package (skip these two lines if disco is
+* already installed, e.g., from the SJ archives)
+net install disco, from("`c(pwd)'/../src") replace
+mata: mata mlib index
 
 capture log close _all
-log using "${root}/results/cdf_simulations.log", replace text
+log using "cdf_simulations.log", replace text
 
 ************************************************************
 * 1. Set up the dataset
 ************************************************************
-clear all
 set seed 12349   // For reproducibility; you can set any seed you like
 
-* We want 4 distributions, each with 100 draws -> total = 400
+* We want 4 donor distributions plus a target, each with 100 draws
 set obs 500
 
 ************************************************************
-* 2. Create an identifier for distribution "id" 
-*    and a uniform random variable "u"
+* 2. Create an identifier "id" and a uniform random variable "u"
 ************************************************************
 gen id = .
 gen u = runiform()
-
 
 forvalues i = 1/5 {
     // Lower bound
@@ -38,9 +44,8 @@ forvalues i = 1/5 {
     replace id = `i' in `first'/`last'
 }
 
-
 ************************************************************
-* 3. Generate the outcome variable "y" 
+* 3. Generate the outcome variable "y"
 *    according to different probability distributions
 ************************************************************
 gen y = .
@@ -86,8 +91,6 @@ drop u
 sort id
 list in 1/20
 
-
-
 gen t = 1
 
 ***************************************************************
@@ -111,8 +114,9 @@ matrix Mix_Qsynth   = e(quantile_synth)  // Mixture synthetic QF
 matrix Mix_Ctarget  = e(cdf_t)           // True (target) CDF
 matrix Mix_Csynth   = e(cdf_synth)       // Mixture synthetic CDF
 
-
-
+* keep the simulated data for the donor-quantile plot below
+tempfile simdata
+save `simdata'
 
 ***************************************************************
 * Plot quantile: True vs. Barycenter vs. Mixture
@@ -149,12 +153,9 @@ twoway ///
     ytitle("Y", size(vlarge)) ///
     scheme(sj) name(qf_compare, replace)
 
-graph export "${figs}/mixture_quantile.pdf", replace
+graph export "mixture_quantile.pdf", replace
 
 restore
-
-
-
 
 ***************************************************************
 * Plot CDF: True vs. Barycenter vs. Mixture
@@ -191,32 +192,27 @@ twoway ///
     ytitle("Pr(Y ≤ y)", size(vlarge)) ///
     scheme(sj) name(cdf_compare, replace)
 
-graph export "${figs}/mixture_cdf.pdf", replace
+graph export "mixture_cdf.pdf", replace
 
 restore
-
-
 
 *******************************************************************************
 * Manually compute each donor's quantile function (id=1..4) plus target (id=5),
 * then overlay them in one graph.
 *******************************************************************************
 
-save temp, replace
-
-
 ********************************************************************************
-* 2) Build a 100 x 5 matrix "donorQ"
+* Build a 100 x 5 matrix "donorQ"
 ********************************************************************************
 matrix donorQ = J(100, 5, .)
 
 forvalues d = 1/5 {
-    // Reload original data each iteration
-    use temp, clear
+    // Reload the simulated data each iteration
+    use `simdata', clear
     keep if id == `d'
-    
+
     // Stata immediate command: _pctile
-    // which puts the quantiles in r(c_1) ... r(c_100)
+    // which puts the quantiles in r(r1) ... r(r100)
     _pctile y, nquantiles(101)
 
     forvalues j = 1/100 {
@@ -225,7 +221,7 @@ forvalues d = 1/5 {
 }
 
 ********************************************************************************
-* 3) Turn that matrix into a new dataset of 100 rows
+* Turn that matrix into a new dataset of 100 rows
 ********************************************************************************
 clear
 set obs 100
@@ -239,7 +235,7 @@ rename Q_4 Q4
 rename Q_5 Qtarget
 
 ********************************************************************************
-* 4) Plot them on a single graph
+* Plot them on a single graph
 ********************************************************************************
 twoway ///
     (line Q1 tau,      lcolor(gs6)   lpattern(solid)   lwidth(medium)) ///
@@ -253,7 +249,7 @@ twoway ///
     ylabel(1(1)4, angle(horiz) grid labsize(large)) ///
     xtitle("Quantile", size(large)) ytitle("Y", size(large)) ///
     scheme(sj) name(donors_qf, replace)
-	
-graph export "${figs}/mixture_raw_quantiles.pdf", replace
+
+graph export "mixture_raw_quantiles.pdf", replace
 
 log close
